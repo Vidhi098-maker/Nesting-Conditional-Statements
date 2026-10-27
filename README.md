@@ -89,6 +89,15 @@ with the link can chat, and every message uses your Claude API credits, so only
 share it with your group. To let friends join from outside your Wi-Fi, run
 the server somewhere public or use a tunnelling tool.
 
+### Hosted version (no server needed)
+
+`hosted/birthday-planner.html` is the same planner as a single page published on
+claude.ai. Shared storage keeps the plan, everyone's preferences, likes, votes
+and chat. The planner bot runs on each viewer's own Claude account, and its
+tools are a JavaScript port of `planner.py` that gives the same ranking. Each
+idea links to a map search for nearby places, so the bot never has to name
+venues itself.
+
 ### Tests
 
 ```bash

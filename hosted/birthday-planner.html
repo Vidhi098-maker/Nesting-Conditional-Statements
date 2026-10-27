@@ -1,0 +1,834 @@
+<title>Birthday Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap">
+<style>
+  /* Layout: a planning board. Ideas list is the main column, the group chat sits beside it (tabs on phones). */
+  :root {
+    --bg: #f5f4fa; --surface: #ffffff; --surface-2: #eceaf5; --line: #dedbea;
+    --ink: #1d1830; --muted: #6a6480; --accent: #f0532e; --accent-ink: #ffffff;
+    --bot: #ece7ff; --bot-ink: #3b2a8f; --good: #1f8a5b; --bad: #c2334a;
+    --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+    --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --r: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15121f; --surface: #1f1b2c; --surface-2: #2a2539; --line: #363049;
+      --ink: #f1eef9; --muted: #a59fba; --accent: #ff7552; --accent-ink: #1a0f0a;
+      --bot: #2c2450; --bot-ink: #d9d0ff; --good: #4cc48d; --bad: #ff7b8f; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15121f; --surface: #1f1b2c; --surface-2: #2a2539; --line: #363049;
+    --ink: #f1eef9; --muted: #a59fba; --accent: #ff7552; --accent-ink: #1a0f0a;
+    --bot: #2c2450; --bot-ink: #d9d0ff; --good: #4cc48d; --bad: #ff7b8f; color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  * { box-sizing: border-box; }
+  h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .muted { color: var(--muted); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-block: 20px 32px; display: grid; gap: 18px; }
+
+  header.top { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 16px; }
+  header.top h1 { font-size: clamp(26px, 5vw, 40px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+  header.top h1 span { color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  .chip.on { background: var(--ink); color: var(--bg); }
+
+  .tabs { display: none; }
+  .board { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .col { display: grid; gap: 18px; min-width: 0; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; min-width: 0; }
+  .panel h2 { font-size: 20px; font-weight: 800; }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+
+  .btn { border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 600; background: var(--accent); color: var(--accent-ink); }
+  .btn.ghost { background: var(--surface-2); color: var(--ink); }
+  .btn.small { padding: 6px 12px; font-size: 13px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .linkbtn { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 0; }
+
+  /* Forms */
+  form.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  form.grid .full { grid-column: 1 / -1; }
+  label.f { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  input[type=text], select { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-weight: 400; font-size: 15px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; color: var(--ink); cursor: pointer; font-weight: 500; }
+  .seg input:checked + label { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .form-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .note { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+
+  /* Ideas */
+  .ideas { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+  .idea { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 2px 12px; align-items: start; padding: 12px 14px; border-radius: var(--r); background: var(--bg); border: 1px solid transparent; }
+  .rank { grid-row: span 3; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font: 800 15px var(--display); background: var(--surface-2); font-variant-numeric: tabular-nums; }
+  .idea:first-child .rank { background: var(--accent); color: var(--accent-ink); }
+  .idea .name { font-weight: 600; font-size: 16px; }
+  .idea .why { font-size: 13.5px; color: var(--muted); grid-column: 2; }
+  .idea .meta { grid-column: 2; display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; margin-top: 2px; }
+  .idea .meta a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .idea .meta a:hover { text-decoration: underline; }
+  .fit { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+  .thumbs { grid-column: 3; grid-row: 2 / span 2; display: flex; gap: 4px; align-self: end; }
+  .thumb { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; width: 34px; height: 32px; font-size: 15px; display: grid; place-items: center; padding: 0; }
+  .thumb[aria-pressed=true].up { background: var(--good); border-color: var(--good); }
+  .thumb[aria-pressed=true].down { background: var(--bad); border-color: var(--bad); }
+  .idea.pickable { cursor: pointer; }
+  .idea.pickable:hover { border-color: var(--line); }
+  .idea.picked { border-color: var(--accent); }
+  .idea.picked .rank { background: var(--accent); color: var(--accent-ink); font-size: 12px; }
+  .empty { padding: 28px 8px; text-align: center; color: var(--muted); display: grid; gap: 10px; justify-items: center; }
+  .empty strong { color: var(--ink); font-family: var(--display); font-size: 18px; }
+
+  .vote-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .results { display: grid; gap: 10px; margin-top: 12px; }
+  .winner { padding: 18px; border-radius: var(--r); background: var(--ink); color: var(--bg); }
+  .winner .label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+  .winner .big { font: 800 clamp(22px, 4vw, 30px)/1.15 var(--display); margin-top: 4px; }
+  .res { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; font-size: 14px; }
+  .res .pts { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+
+  /* People */
+  .people { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .person { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--bg); font-size: 13.5px; }
+  .person img { width: 24px; height: 24px; border-radius: 50%; }
+  .person .dot { width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); display: grid; place-items: center; font-size: 12px; }
+  .person small { color: var(--muted); }
+  .person .tick { color: var(--good); font-weight: 700; }
+
+  /* Chat */
+  .chat { display: flex; flex-direction: column; height: min(78vh, 760px); padding: 0; overflow: hidden; position: sticky; top: calc(12px + env(safe-area-inset-top, 0px)); }
+  .chat .panel-head { padding: 16px 18px 10px; border-bottom: 1px solid var(--line); margin: 0; }
+  .msgs { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .msg { max-width: 88%; display: grid; gap: 2px; }
+  .msg .who { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .msg .body { padding: 9px 13px; border-radius: 14px; background: var(--bg); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.mine { align-self: flex-end; }
+  .msg.mine .who { text-align: right; }
+  .msg.mine .body { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+  .msg.bot .body { background: var(--bot); color: var(--bot-ink); border-bottom-left-radius: 4px; }
+  .msg.thinking .body { font-style: italic; }
+  .composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
+  .composer input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .bot-off { font-size: 12.5px; color: var(--muted); padding: 0 16px 10px; }
+
+  @media (max-width: 860px) {
+    .tabs { display: flex; gap: 6px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 6px; }
+    .tabs button { flex: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 9px; font-weight: 600; color: var(--muted); }
+    .tabs button[aria-selected=true] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .board { grid-template-columns: minmax(0, 1fr); }
+    .board[data-tab=plan] .chat-col, .board[data-tab=chat] .plan-col { display: none; }
+    .chat { position: static; height: calc(100vh - 210px); min-height: 420px; }
+    form.grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1 id="title">Birthday <span>Planner</span></h1>
+    <div class="chips" id="summary"></div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-plan" aria-selected="true">Plan</button>
+    <button role="tab" id="tab-chat" aria-selected="false">Group chat</button>
+  </div>
+
+  <div class="board" id="board" data-tab="plan">
+    <div class="col plan-col">
+      <section class="panel" id="ideas-panel" aria-live="polite"></section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Who's planning</h2>
+          <span class="muted" id="people-count"></span>
+        </div>
+        <div class="people" id="people"></div>
+        <form class="grid" id="me-form">
+          <div class="full"><strong>Your preferences</strong> <span class="muted">· these shape the ranking</span></div>
+          <div class="full f">
+            <div class="muted" style="font-size:13px;font-weight:600">Ideal vibe</div>
+            <div class="seg" id="me-vibe"></div>
+          </div>
+          <div class="f">
+            <div class="muted" style="font-size:13px;font-weight:600">Indoors or outdoors</div>
+            <div class="seg" id="me-place"></div>
+          </div>
+          <div class="f">
+            <div class="muted" style="font-size:13px;font-weight:600">Max budget</div>
+            <div class="seg" id="me-budget"></div>
+          </div>
+          <div class="full form-actions">
+            <button class="btn" type="submit" id="me-save">Save my preferences</button>
+            <span class="note" id="me-note"></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>The birthday</h2><span class="muted">Anyone in the group can edit this</span></div>
+        <form class="grid" id="loc-form">
+          <label class="f">Whose birthday?<input type="text" id="bp" maxlength="40" placeholder="e.g. Sam"></label>
+          <label class="f">Their favourite vibe<select id="bvibe"></select></label>
+          <label class="f">Town or city<input type="text" id="place" maxlength="60" placeholder="e.g. Lisbon"></label>
+          <label class="f">Kind of area<select id="setting"></select></label>
+          <label class="f">Birthday month<select id="month"></select></label>
+          <label class="f">Climate<select id="hemi"></select></label>
+          <div class="full f">
+            <div class="muted" style="font-size:13px;font-weight:600">Nearby</div>
+            <div class="seg" id="features"></div>
+          </div>
+          <div class="full form-actions">
+            <button class="btn" type="submit" id="loc-save">Save birthday details</button>
+            <span class="note" id="loc-note"></span>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="col chat-col">
+      <section class="panel chat">
+        <div class="panel-head"><h2>Group chat</h2><span class="muted">with the planner bot</span></div>
+        <div class="msgs" id="msgs" aria-live="polite"></div>
+        <div class="bot-off" id="bot-off" hidden></div>
+        <form class="composer" id="composer">
+          <input id="text" maxlength="800" autocomplete="off" placeholder="Tell the bot what you think…">
+          <button class="btn" type="submit" id="send">Send</button>
+        </form>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- The idea catalog and ranking algorithm (same rules as the Python app) ---------- */
+const ALL = ["city", "suburb", "town", "rural"], URBAN = ["city", "suburb"];
+const I = (name, vibes, settings, needs, outdoor, cost, maxGroup, search, extra = {}) =>
+  ({ name, vibes, settings, needs, outdoor, cost, maxGroup, search, ...extra });
+const IDEAS = [
+  I("Rooftop dinner with a view", ["fancy", "chill"], ["city"], null, true, 3, 12, "rooftop restaurant"),
+  I("Escape room challenge", ["adventurous", "party"], URBAN, null, false, 2, 8, "escape room"),
+  I("Karaoke night in a private booth", ["party"], URBAN, null, false, 2, 15, "karaoke private room"),
+  I("Chef's tasting menu", ["fancy"], ["city"], null, false, 3, 8, "tasting menu restaurant"),
+  I("Comedy club show", ["party", "chill"], URBAN, null, false, 2, 12, "comedy club"),
+  I("Live concert or gig", ["party", "adventurous"], ["city"], null, false, 3, 20, "live music venue"),
+  I("Museum or gallery day + cafe", ["chill", "creative"], URBAN, null, false, 1, 10, "museum"),
+  I("Pottery or painting class", ["creative", "chill"], ["city", "suburb", "town"], null, false, 2, 12, "pottery class"),
+  I("Cooking class together", ["creative", "fancy"], URBAN, null, false, 2, 10, "cooking class"),
+  I("Bowling and arcade night", ["party", "chill"], ["city", "suburb", "town"], null, false, 1, 20, "bowling alley"),
+  I("Go-kart racing", ["adventurous", "party"], ["suburb", "town"], null, true, 2, 12, "go kart track"),
+  I("Trampoline park", ["adventurous", "party"], URBAN, null, false, 1, 20, "trampoline park"),
+  I("Indoor rock climbing", ["adventurous"], URBAN, null, false, 2, 10, "climbing gym"),
+  I("Spa day", ["chill", "fancy"], ["city", "suburb", "town"], null, false, 3, 6, "day spa"),
+  I("Food market crawl", ["adventurous", "chill"], ["city"], null, true, 1, 10, "food market"),
+  I("Themed house party", ["party", "creative"], ALL, null, false, 1, 40, "party supplies"),
+  I("Backyard barbecue", ["chill", "party"], ["suburb", "town", "rural"], null, true, 1, 30, "butcher barbecue"),
+  I("Movie marathon sleepover", ["chill"], ALL, null, false, 1, 10, null),
+  I("Board game and pizza night", ["chill", "creative"], ALL, null, false, 1, 12, "board game cafe"),
+  I("Murder mystery dinner at home", ["creative", "party", "fancy"], ALL, null, false, 1, 12, null),
+  I("Picnic in the park", ["chill"], ALL, null, true, 1, 25, "park picnic area"),
+  I("Outdoor movie under the stars", ["chill", "creative"], ["suburb", "town", "rural"], null, true, 1, 20, "outdoor cinema"),
+  I("Bonfire and s'mores night", ["chill", "party"], ["town", "rural"], null, true, 1, 25, "fire pit campground"),
+  I("Stargazing trip", ["chill", "adventurous"], ["town", "rural"], null, true, 1, 12, "stargazing spot"),
+  I("Farm visit and fruit picking", ["chill", "creative"], ["town", "rural"], null, true, 1, 20, "pick your own farm"),
+  I("Horse riding trail", ["adventurous"], ["town", "rural"], null, true, 2, 8, "horse riding"),
+  I("Winery or brewery tour", ["fancy", "chill"], ["town", "rural"], null, true, 2, 12, "winery tour"),
+  I("DIY craft party (tie-dye, candles)", ["creative", "party"], ALL, null, false, 1, 15, "craft workshop"),
+  I("Fancy dress-up dinner party", ["fancy", "party"], ALL, null, false, 2, 14, null),
+  I("Scavenger hunt around town", ["adventurous", "creative", "party"], ALL, null, true, 1, 20, "scavenger hunt"),
+  I("Beach day and sunset dinner", ["chill", "party"], ALL, "beach", true, 1, 30, "beach restaurant"),
+  I("Surf or paddleboard lesson", ["adventurous"], ALL, "beach", true, 2, 8, "surf school"),
+  I("Sunset boat cruise", ["fancy", "chill"], ALL, "beach", true, 3, 15, "sunset boat cruise"),
+  I("Mountain hike with a summit picnic", ["adventurous", "chill"], ALL, "mountains", true, 1, 12, "hiking trail"),
+  I("Cabin weekend getaway", ["chill", "fancy"], ALL, "mountains", false, 3, 10, "cabin rental"),
+  I("Ski or snowboard day", ["adventurous"], ALL, "mountains", true, 3, 10, "ski resort", { winterOnly: true }),
+  I("Kayaking on the lake", ["adventurous", "chill"], ALL, "lake", true, 2, 10, "kayak rental"),
+  I("Lakeside camping trip", ["adventurous", "chill"], ALL, "lake", true, 1, 15, "lakeside campground"),
+  I("Ice skating and hot chocolate", ["chill", "party"], ALL, null, true, 1, 20, "ice rink", { winterOnly: true }),
+];
+const VIBES = ["chill", "adventurous", "fancy", "party", "creative"];
+const SETTINGS = ["city", "suburb", "town", "rural"];
+const FEATURES = ["beach", "mountains", "lake"];
+const HEMIS = { north: "North of the tropics", south: "South of the tropics", tropical: "Tropical" };
+const PLACES = { indoor: "Indoors", outdoor: "Outdoors", either: "Either" };
+const BUDGETS = { 1: "Cheap", 2: "Moderate", 3: "Splurge" };
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const IDEA_BY_NAME = Object.fromEntries(IDEAS.map((i) => [i.name, i]));
+
+function getSeason(month, hemi) {
+  if (hemi === "tropical") return "warm";
+  let s = [12, 1, 2].includes(month) ? "winter" : [3, 4, 5].includes(month) ? "spring" : [6, 7, 8].includes(month) ? "summer" : "autumn";
+  if (hemi === "south") s = { winter: "summer", summer: "winter", spring: "autumn", autumn: "spring" }[s];
+  return s;
+}
+
+function summarizeGroup(members, birthdayVibe) {
+  const vibes = {}, places = {};
+  for (const m of members) { vibes[m.vibe] = (vibes[m.vibe] || 0) + 1; places[m.place] = (places[m.place] || 0) + 1; }
+  if (birthdayVibe) vibes[birthdayVibe] = (vibes[birthdayVibe] || 0) + 2;
+  const budget = members.length ? Math.min(...members.map((m) => m.budget)) : 3;
+  return { vibes, places, budget, size: members.length + 1 };
+}
+
+function learnWeights(feedback) {
+  const w = {};
+  for (const [name, signal] of Object.entries(feedback)) {
+    const idea = IDEA_BY_NAME[name];
+    if (!idea) continue;
+    for (const v of idea.vibes) w[v] = (w[v] || 0) + signal;
+    const k = idea.outdoor ? "outdoor" : "indoor";
+    w[k] = (w[k] || 0) + signal;
+  }
+  return w;
+}
+
+function scoreIdea(idea, loc, group, w) {
+  const season = loc.season;
+  if (!idea.settings.includes(loc.setting)) return null;
+  if (idea.needs && !loc.features.includes(idea.needs)) return null;
+  if (idea.winterOnly && season !== "winter") return null;
+  let score = 0; const reasons = [];
+  const n = (o, k) => o[k] || 0;
+  const vibeVotes = idea.vibes.reduce((t, v) => t + n(group.vibes, v), 0);
+  if (vibeVotes > 0) {
+    score += 3 * vibeVotes;
+    const top = idea.vibes.reduce((a, b) => (n(group.vibes, b) > n(group.vibes, a) ? b : a));
+    reasons.push(`matches the group's ${top} vibe`);
+  }
+  score += idea.outdoor ? n(group.places, "outdoor") - n(group.places, "indoor") : n(group.places, "indoor") - n(group.places, "outdoor");
+  if (idea.needs) { score += 3; reasons.push(`makes the most of the nearby ${idea.needs}`); }
+  if (idea.outdoor) {
+    if (idea.winterOnly) { score += 3; reasons.push("perfect for a winter birthday"); }
+    else if (season === "winter") score -= 4;
+    else if (season === "summer" || season === "warm") { score += 2; reasons.push(`great ${season} weather activity`); }
+  } else if (season === "winter") { score += 2; reasons.push("cosy and indoors for winter"); }
+  if (idea.cost > group.budget) score -= 4 * (idea.cost - group.budget);
+  else reasons.push(`fits a ${BUDGETS[group.budget].toLowerCase()} budget`);
+  if (group.size > idea.maxGroup) score -= 5;
+  else if (idea.maxGroup >= 20) reasons.push("works for big groups");
+  const learned = idea.vibes.reduce((t, v) => t + n(w, v), 0) + n(w, idea.outdoor ? "outdoor" : "indoor");
+  if (learned) { score += 2 * learned; if (learned > 0) reasons.push("similar to ideas you liked"); }
+  return { score, reasons };
+}
+
+function overlap(a, b) {
+  let s = a.vibes.filter((v) => b.vibes.includes(v)).length;
+  if (a.needs && a.needs === b.needs) s += 1;
+  if (a.outdoor === b.outdoor) s += 1;
+  return s;
+}
+
+function suggest(loc, group, feedback = {}, count = 10, diversity = 1) {
+  const w = learnWeights(feedback);
+  let cands = [];
+  IDEAS.forEach((idea, order) => {
+    if ((feedback[idea.name] || 0) < 0) return;
+    const r = scoreIdea(idea, loc, group, w);
+    if (r) cands.push({ ...r, order, idea });
+  });
+  const picked = [];
+  while (cands.length && picked.length < count) {
+    let best = null, bestKey = null;
+    for (const c of cands) {
+      const pen = picked.length ? Math.max(...picked.map((p) => overlap(c.idea, p.idea))) : 0;
+      const key = [c.score - diversity * pen, -c.order];
+      if (!best || key[0] > bestKey[0] || (key[0] === bestKey[0] && key[1] > bestKey[1])) { best = c; bestKey = key; }
+    }
+    cands = cands.filter((c) => c !== best);
+    picked.push(best);
+  }
+  return picked.map((c) => ({ name: c.name || c.idea.name, score: c.score, reasons: c.reasons, search: c.idea.search }));
+}
+
+const POINTS = [3, 2, 1];
+function tally(options, ballots) {
+  const res = options.map((name, i) => ({ name, points: 0, first: 0, rank: i }));
+  const idx = Object.fromEntries(options.map((n, i) => [n, i]));
+  for (const b of ballots) {
+    b.forEach((name, k) => { if (name in idx) res[idx[name]].points += POINTS[k] || 0; });
+    if (b[0] in idx) res[idx[b[0]]].first += 1;
+  }
+  return res.sort((a, b) => b.points - a.points || b.first - a.first || a.rank - b.rank);
+}
+
+/* ---------- Shared state ---------- */
+const S = { plan: null, friends: {}, guests: {}, feedback: {}, votes: {}, chat: [], names: {} };
+let db = null, user = null, sample = null, me = { id: null }, canWrite = true;
+let picks = [], botBusy = false, pendingBot = null, botController = null;
+
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === false || v == null) continue;
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
+  return n;
+}
+
+function planLocation() {
+  const p = S.plan;
+  if (!p || !p.place || !p.setting || !p.month || !p.hemisphere) return null;
+  return { place: p.place, setting: p.setting, features: p.features || [], season: getSeason(p.month, p.hemisphere) };
+}
+function members() {
+  return [...Object.values(S.friends), ...Object.values(S.guests)]
+    .filter((m) => VIBES.includes(m.vibe) && PLACES[m.place] && BUDGETS[m.budget]);
+}
+function groupFeedback() {
+  const sum = {};
+  for (const f of Object.values(S.feedback)) for (const [k, v] of Object.entries(f.ideas || {})) sum[k] = (sum[k] || 0) + Math.sign(v);
+  const out = {};
+  for (const [k, v] of Object.entries(sum)) if (v) out[k] = Math.sign(v);
+  return out;
+}
+function currentIdeas() {
+  const loc = planLocation();
+  if (!loc) return [];
+  return suggest(loc, summarizeGroup(members(), S.plan.birthdayVibe), groupFeedback());
+}
+function phase() { return S.plan?.phase || "planning"; }
+function round() { return S.plan?.round || 0; }
+function roundVotes() {
+  return Object.entries(S.votes).filter(([, v]) => v.round === round() && Array.isArray(v.picks)).map(([uid, v]) => ({ uid, picks: v.picks }));
+}
+function voters() { return Object.keys(S.friends); }
+function showingResults() {
+  const vs = roundVotes();
+  return phase() === "results" || (phase() === "voting" && vs.length > 0 && voters().every((u) => vs.some((v) => v.uid === u)));
+}
+function nameOf(uid) { return uid === me.id ? "You" : S.names[uid] || "Someone"; }
+
+/* ---------- Writes (also applied locally so the bot's next tool call sees them) ---------- */
+async function savePlan(patch) {
+  const next = { ...(S.plan || {}), ...patch, updatedAt: Date.now() };
+  S.plan = next;
+  await db.doc("plan/main").set(next);
+}
+async function saveMine(prefs) {
+  S.friends[me.id] = prefs;
+  await db.doc(`friends/${me.id}`).set(prefs);
+}
+async function saveFeedback(name, signal) {
+  const mine = { ...((S.feedback[me.id] || {}).ideas || {}) };
+  if (signal) mine[name] = signal; else delete mine[name];
+  S.feedback[me.id] = { ideas: mine };
+  await db.doc(`feedback/${me.id}`).set({ ideas: mine });
+}
+function slug(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "friend"; }
+
+/* ---------- Rendering ---------- */
+function renderSummary() {
+  const p = S.plan, loc = planLocation();
+  $("title").replaceChildren(p?.birthdayPerson ? document.createTextNode(`${p.birthdayPerson}'s `) : "Birthday ",
+    el("span", {}, p?.birthdayPerson ? "birthday" : "Planner"));
+  const chips = [];
+  if (loc) {
+    chips.push(el("span", { class: "chip on" }, p.place));
+    chips.push(el("span", { class: "chip" }, `${MONTHS[p.month - 1]} · ${loc.season}`));
+    chips.push(el("span", { class: "chip" }, loc.setting));
+    for (const f of loc.features) chips.push(el("span", { class: "chip" }, `near ${f}`));
+    const g = summarizeGroup(members(), p.birthdayVibe);
+    chips.push(el("span", { class: "chip" }, `${BUDGETS[g.budget].toLowerCase()} budget`));
+  }
+  $("summary").replaceChildren(...chips);
+}
+
+function mapsLink(idea) {
+  const loc = planLocation();
+  if (!idea.search || !loc) return null;
+  const q = encodeURIComponent(`${idea.search} near ${loc.place}`);
+  return el("a", { href: `https://www.google.com/maps/search/?api=1&query=${q}`, target: "_blank", rel: "noopener noreferrer" }, "Find places nearby ↗");
+}
+
+function ideaRow(s, i, opts = {}) {
+  const mine = ((S.feedback[me.id] || {}).ideas || {})[s.name] || 0;
+  const pickAt = picks.indexOf(s.name);
+  const pickable = !!opts.pickable;
+  const thumbs = opts.thumbs && me.id ? el("div", { class: "thumbs" },
+    el("button", { class: "thumb up", "aria-pressed": String(mine > 0), "aria-label": `Like ${s.name}`, onclick: (e) => { e.stopPropagation(); react(s.name, mine > 0 ? 0 : 1); } }, "👍"),
+    el("button", { class: "thumb down", "aria-pressed": String(mine < 0), "aria-label": `Hide ${s.name}`, onclick: (e) => { e.stopPropagation(); react(s.name, mine < 0 ? 0 : -1); } }, "👎")) : null;
+  return el("li", {
+    class: `idea${pickable ? " pickable" : ""}${pickable && pickAt >= 0 ? " picked" : ""}`,
+    ...(pickable ? { role: "button", tabindex: "0", "aria-pressed": String(pickAt >= 0), onclick: () => togglePick(s.name), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePick(s.name); } } } : {}),
+  },
+    el("div", { class: "rank" }, pickable && pickAt >= 0 ? ["1st", "2nd", "3rd"][pickAt] : String(i + 1)),
+    el("div", { class: "name" }, s.name),
+    opts.fit && s.score != null ? el("div", { class: "fit" }, `fit ${s.score}`) : el("div"),
+    el("div", { class: "why" }, (s.reasons || []).join(" · ") || "a solid all-rounder"),
+    thumbs,
+    el("div", { class: "meta" }, mapsLink(IDEA_BY_NAME[s.name] || {})));
+}
+
+function renderIdeas() {
+  const box = $("ideas-panel");
+  const p = phase();
+  if (showingResults()) return renderResults(box);
+  if (p === "voting") return renderVoting(box);
+
+  const ideas = currentIdeas();
+  if (!ideas.length) {
+    box.replaceChildren(el("div", { class: "panel-head" }, el("h2", {}, "Top 10 ideas")),
+      el("div", { class: "empty" }, el("strong", {}, "No birthday set up yet"),
+        el("span", {}, "Fill in the birthday details below, or tell the planner bot in the group chat. Ten ideas tailored to where they live will show up here."),
+        el("button", { class: "btn ghost", onclick: () => { $("bp").focus(); } }, "Add birthday details")));
+    return;
+  }
+  const n = members().length;
+  box.replaceChildren(
+    el("div", { class: "panel-head" }, el("h2", {}, "Top 10 ideas"),
+      el("span", { class: "muted" }, n ? `Ranked for ${n} ${n === 1 ? "person" : "people"}'s preferences` : "Add your preferences to tailor this")),
+    el("p", { class: "muted", style: "margin:4px 0 0" }, "👍 pulls similar ideas up, 👎 removes one. The list is picked to stay varied."),
+    el("ol", { class: "ideas" }, ideas.map((s, i) => ideaRow(s, i, { thumbs: true, fit: true }))),
+    el("div", { class: "vote-bar" },
+      el("button", { class: "btn", onclick: startVote, disabled: !me.id || !canWrite }, "Start the vote"),
+      el("span", { class: "muted" }, "Freezes this list and everyone picks their top 3.")));
+}
+
+function renderVoting(box) {
+  const list = S.plan.frozen || [];
+  const vs = roundVotes();
+  const mineVoted = vs.some((v) => v.uid === me.id);
+  box.replaceChildren(
+    el("div", { class: "panel-head" }, el("h2", {}, "Vote"), el("span", { class: "muted" }, `${vs.length} of ${voters().length} voted`)),
+    el("p", { class: "muted", style: "margin:4px 0 0" }, mineVoted ? "Your vote is in. You can change it until voting closes." : "Tap your top 3 in order. 1st gets 3 points, 2nd 2, 3rd 1."),
+    el("ol", { class: "ideas" }, list.map((s, i) => ideaRow(s, i, { pickable: !!me.id }))),
+    el("div", { class: "vote-bar" },
+      el("button", { class: "btn", onclick: castVote, disabled: picks.length !== 3 || !me.id }, picks.length === 3 ? (mineVoted ? "Update my vote" : "Submit my vote") : `Pick ${3 - picks.length} more`),
+      vs.length ? el("button", { class: "btn ghost", onclick: () => savePlan({ phase: "results" }), disabled: !canWrite }, "Close voting now") : null,
+      el("button", { class: "linkbtn", onclick: backToPlanning, disabled: !canWrite }, "Back to planning")));
+}
+
+function renderResults(box) {
+  const list = (S.plan.frozen || []).map((s) => s.name);
+  const res = tally(list, roundVotes().map((v) => v.picks));
+  const max = Math.max(1, ...res.map((r) => r.points));
+  const tie = res.length > 1 && res[1].points === res[0].points && res[1].first === res[0].first;
+  const who = roundVotes().map((v) => nameOf(v.uid));
+  box.replaceChildren(
+    el("div", { class: "panel-head" }, el("h2", {}, "Results"), el("span", { class: "muted" }, `${who.length} ${who.length === 1 ? "vote" : "votes"}`)),
+    el("div", { class: "results" },
+      el("div", { class: "winner" }, el("div", { class: "label" }, "The winner"), el("div", { class: "big" }, res[0]?.name || "–"),
+        tie ? el("div", { style: "font-size:13px;opacity:.75;margin-top:4px" }, "Tied on points and first places, so the planner's ranking broke it.") : null,
+        mapsLink(IDEA_BY_NAME[res[0]?.name] || {})),
+      res.map((r) => el("div", { class: "res" }, el("span", {}, r.name), el("span", { class: "pts" }, `${r.points} ${r.points === 1 ? "pt" : "pts"}`),
+        el("div", { class: "bar" }, el("i", { style: `width:${(r.points / max) * 100}%` }))))),
+    el("div", { class: "vote-bar" }, el("button", { class: "btn ghost", onclick: backToPlanning, disabled: !canWrite }, "Plan again")));
+  const link = box.querySelector(".winner a");
+  if (link) link.style.color = "inherit";
+}
+
+function renderPeople() {
+  const vs = roundVotes(), voting = phase() === "voting";
+  const ids = Object.keys(S.friends);
+  const chips = ids.map((uid) => {
+    const f = S.friends[uid];
+    return el("span", { class: "person" }, el("span", { class: "dot", "data-avatar": uid }, "•"),
+      el("span", {}, nameOf(uid)), el("small", {}, `${f.vibe} · ${PLACES[f.place]?.toLowerCase()} · ${BUDGETS[f.budget]?.toLowerCase()}`),
+      voting && vs.some((v) => v.uid === uid) ? el("span", { class: "tick", title: "Voted" }, "✓") : null);
+  });
+  for (const g of Object.values(S.guests)) {
+    chips.push(el("span", { class: "person" }, el("span", { class: "dot" }, "+"), el("span", {}, g.name),
+      el("small", {}, `${g.vibe} · ${PLACES[g.place]?.toLowerCase()} · ${BUDGETS[g.budget]?.toLowerCase()} · added by chat`)));
+  }
+  $("people").replaceChildren(...(chips.length ? chips : [el("span", { class: "muted" }, "Nobody yet. Save your preferences below to join.")]));
+  $("people-count").textContent = chips.length ? `${chips.length} in the plan` : "";
+  if (user) user.profiles(ids).then((ps) => {
+    for (const uid of ids) {
+      const slot = $("people").querySelector(`[data-avatar="${CSS.escape(uid)}"]`);
+      if (slot && ps[uid]?.avatarUrl) slot.replaceWith(el("img", { src: ps[uid].avatarUrl, alt: "" }));
+    }
+  });
+}
+
+let chatKey = "";
+function renderChat() {
+  const key = S.chat.map((m) => m.id).join(",") + "|" + botBusy + "|" + JSON.stringify(S.names);
+  if (key === chatKey) return;
+  chatKey = key;
+  const box = $("msgs");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const rows = S.chat.map((m) => {
+    const kind = m.bot ? "bot" : m.author === me.id ? "mine" : "";
+    return el("div", { class: `msg ${kind}` }, el("div", { class: "who" }, m.bot ? "🎈 Planner bot" : nameOf(m.author)), el("div", { class: "body" }, m.text));
+  });
+  if (!rows.length) rows.push(el("div", { class: "msg bot" }, el("div", { class: "who" }, "🎈 Planner bot"),
+    el("div", { class: "body" }, "Hi! Whose birthday are we planning, and where do they live? Tell me what kind of day you'd love too.")));
+  if (botBusy) rows.push(el("div", { class: "msg bot thinking" }, el("div", { class: "who" }, "🎈 Planner bot"), el("div", { class: "body", id: "bot-live" }, pendingBot || "Thinking…")));
+  box.replaceChildren(...rows);
+  if (atBottom || botBusy) box.scrollTop = box.scrollHeight;
+}
+
+function render() {
+  renderSummary(); renderIdeas(); renderPeople(); renderChat(); fillForms();
+}
+
+/* ---------- Forms ---------- */
+function seg(id, name, options, labels) {
+  $(id).replaceChildren(...options.flatMap((v) => [
+    el("input", { type: name === "features" ? "checkbox" : "radio", name, id: `${id}-${v}`, value: String(v) }),
+    el("label", { for: `${id}-${v}` }, labels ? labels[v] : v)]));
+}
+function options(id, entries) { $(id).replaceChildren(...entries.map(([v, t]) => el("option", { value: v }, t))); }
+
+seg("me-vibe", "vibe", VIBES);
+seg("me-place", "place", Object.keys(PLACES), PLACES);
+seg("me-budget", "budget", [1, 2, 3], BUDGETS);
+seg("features", "features", FEATURES);
+options("bvibe", [["", "Not sure"], ...VIBES.map((v) => [v, v])]);
+options("setting", [["", "Choose…"], ...SETTINGS.map((v) => [v, v])]);
+options("month", [["", "Choose…"], ...MONTHS.map((m, i) => [String(i + 1), m])]);
+options("hemi", [["", "Choose…"], ...Object.entries(HEMIS)]);
+
+let locDirty = false, meDirty = false;
+$("loc-form").addEventListener("input", () => { locDirty = true; });
+$("me-form").addEventListener("input", () => { meDirty = true; });
+function fillForms() {
+  const p = S.plan || {};
+  if (!locDirty) {
+    $("bp").value = p.birthdayPerson || ""; $("bvibe").value = p.birthdayVibe || ""; $("place").value = p.place || "";
+    $("setting").value = p.setting || ""; $("month").value = p.month ? String(p.month) : ""; $("hemi").value = p.hemisphere || "";
+    for (const f of FEATURES) $(`features-${f}`).checked = (p.features || []).includes(f);
+  }
+  const mine = S.friends[me.id];
+  if (!meDirty && mine) {
+    $(`me-vibe-${mine.vibe}`).checked = true; $(`me-place-${mine.place}`).checked = true; $(`me-budget-${mine.budget}`).checked = true;
+  }
+  $("me-save").disabled = !me.id; $("loc-save").disabled = !me.id || !canWrite;
+  if (!me.id && !db) $("me-note").textContent = "Saving needs a signed-in Claude account.";
+  $("me-save").textContent = mine ? "Update my preferences" : "Join with these preferences";
+}
+
+$("loc-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const month = Number($("month").value);
+  const patch = {
+    birthdayPerson: $("bp").value.trim(), birthdayVibe: $("bvibe").value || null, place: $("place").value.trim(),
+    setting: $("setting").value, month, hemisphere: $("hemi").value,
+    features: FEATURES.filter((f) => $(`features-${f}`).checked),
+  };
+  if (!patch.birthdayPerson || !patch.place || !patch.setting || !month || !patch.hemisphere) {
+    $("loc-note").textContent = "Fill in the name, place, area, month and climate."; return;
+  }
+  try { await savePlan(patch); locDirty = false; $("loc-note").textContent = "Saved."; render(); }
+  catch (err) { $("loc-note").textContent = writeError(err); }
+});
+
+$("me-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const v = document.querySelector("input[name=vibe]:checked"), pl = document.querySelector("input[name=place]:checked"), b = document.querySelector("input[name=budget]:checked");
+  if (!v || !pl || !b) { $("me-note").textContent = "Pick a vibe, indoors or outdoors, and a budget."; return; }
+  try { await saveMine({ vibe: v.value, place: pl.value, budget: Number(b.value) }); meDirty = false; $("me-note").textContent = "Saved. The ranking now includes you."; render(); }
+  catch (err) { $("me-note").textContent = writeError(err); }
+});
+
+function writeError(err) {
+  if (err?.code === "invalid_argument") { canWrite = false; return "You have view-only access, so this can't be saved."; }
+  if (err?.code === "quota_exceeded") return "This plan's storage is full.";
+  return "Couldn't save just now. Try again in a moment.";
+}
+
+async function react(name, signal) {
+  try { await saveFeedback(name, signal); render(); } catch (err) { alertNote(writeError(err)); }
+}
+function alertNote(t) { $("me-note").textContent = t; }
+
+async function startVote() {
+  const ideas = currentIdeas();
+  if (!ideas.length) return;
+  picks = [];
+  await savePlan({ phase: "voting", round: round() + 1, frozen: ideas.map(({ name, reasons }) => ({ name, reasons })) });
+  render();
+}
+async function backToPlanning() { picks = []; await savePlan({ phase: "planning" }); render(); }
+function togglePick(name) {
+  const at = picks.indexOf(name);
+  if (at >= 0) picks.splice(at, 1); else if (picks.length < 3) picks.push(name);
+  renderIdeas();
+}
+async function castVote() {
+  if (picks.length !== 3) return;
+  try {
+    S.votes[me.id] = { picks: [...picks], round: round() };
+    await db.doc(`votes/${me.id}`).set({ picks: [...picks], round: round(), at: Date.now() });
+    render();
+  } catch (err) { alertNote(writeError(err)); }
+}
+
+/* ---------- Tabs ---------- */
+for (const t of ["plan", "chat"]) $(`tab-${t}`).onclick = () => {
+  $("board").dataset.tab = t;
+  $("tab-plan").setAttribute("aria-selected", String(t === "plan"));
+  $("tab-chat").setAttribute("aria-selected", String(t === "chat"));
+  if (t === "chat") $("msgs").scrollTop = $("msgs").scrollHeight;
+};
+
+/* ---------- The planner bot (Claude, through page tools) ---------- */
+const BOT_RULES = `You are the planner bot in a group chat of friends planning a birthday. Be warm and brief (2-5 short sentences, or a short list).
+
+A ranking algorithm decides which ideas fit; your job is to collect good inputs through conversation and explain the results. Use the tools:
+- update_birthday: save who the birthday is for, where they live (city/suburb/town/rural, nearby beach/mountains/lake, climate zone) and the month. Infer fields from what people say (e.g. "Lisbon by the sea" = city, beach, north). Ask only for what you can't infer.
+- set_my_preferences: save the preferences of the person who just wrote (the last message's author). Only for them.
+- add_friend: save preferences for someone who was mentioned but isn't using the app.
+- record_feedback: when the person who just wrote likes or dislikes a listed idea.
+- get_suggestions: the current top 10 from the algorithm. Call it after any change before talking about ideas.
+- start_vote: when the group says they're ready to vote.
+
+Rules: only talk about ideas returned by get_suggestions, never invent your own. Don't name specific venues or businesses; each idea in the app has a "Find places nearby" map link, point people to that. Reply in plain text without Markdown headings or bold.`;
+
+const BOT_TOOLS = [
+  { name: "update_birthday", description: "Save or change the birthday details. Send only fields you know; others are kept. Returns the saved details.",
+    inputSchema: { type: "object", properties: {
+      birthday_person: { type: "string" }, birthday_vibe: { type: "string", enum: VIBES },
+      place: { type: "string", description: "Town or city name" }, setting: { type: "string", enum: SETTINGS },
+      features: { type: "array", items: { type: "string", enum: FEATURES } },
+      hemisphere: { type: "string", enum: Object.keys(HEMIS) }, month: { type: "integer", minimum: 1, maximum: 12 } } },
+    async execute(a) {
+      const patch = {};
+      if (a.birthday_person) patch.birthdayPerson = String(a.birthday_person).slice(0, 40);
+      if (VIBES.includes(a.birthday_vibe)) patch.birthdayVibe = a.birthday_vibe;
+      if (a.place) patch.place = String(a.place).slice(0, 60);
+      if (a.setting != null) { if (!SETTINGS.includes(a.setting)) throw new Error(`setting must be one of ${SETTINGS}`); patch.setting = a.setting; }
+      if (Array.isArray(a.features)) patch.features = a.features.filter((f) => FEATURES.includes(f));
+      if (a.hemisphere != null) { if (!HEMIS[a.hemisphere]) throw new Error("hemisphere must be north, south or tropical"); patch.hemisphere = a.hemisphere; }
+      if (a.month != null) { const m = Number(a.month); if (!(m >= 1 && m <= 12)) throw new Error("month must be 1-12"); patch.month = m; }
+      await savePlan(patch); render();
+      const loc = planLocation();
+      return { saved: S.plan, season: loc?.season ?? null, missing: ["place", "setting", "month", "hemisphere"].filter((k) => !S.plan[k]) };
+    } },
+  { name: "set_my_preferences", description: "Save the preferences of the person who sent the latest message. Budget: 1 cheap, 2 moderate, 3 splurge.",
+    inputSchema: { type: "object", properties: { vibe: { type: "string", enum: VIBES }, place: { type: "string", enum: Object.keys(PLACES) }, budget: { type: "integer", enum: [1, 2, 3] } }, required: ["vibe", "place", "budget"] },
+    async execute(a) {
+      if (!VIBES.includes(a.vibe) || !PLACES[a.place] || !BUDGETS[Number(a.budget)]) throw new Error("vibe, place or budget not recognised");
+      await saveMine({ vibe: a.vibe, place: a.place, budget: Number(a.budget) }); render();
+      return "Saved.";
+    } },
+  { name: "add_friend", description: "Save preferences for a friend who was mentioned but isn't using the app. Calling it again with the same name updates them.",
+    inputSchema: { type: "object", properties: { name: { type: "string" }, vibe: { type: "string", enum: VIBES }, place: { type: "string", enum: Object.keys(PLACES) }, budget: { type: "integer", enum: [1, 2, 3] } }, required: ["name", "vibe", "place", "budget"] },
+    async execute(a) {
+      if (!a.name || !VIBES.includes(a.vibe) || !PLACES[a.place] || !BUDGETS[Number(a.budget)]) throw new Error("name, vibe, place or budget not recognised");
+      const g = { name: String(a.name).slice(0, 40), vibe: a.vibe, place: a.place, budget: Number(a.budget) };
+      S.guests[slug(g.name)] = g;
+      await db.doc(`guests/${slug(g.name)}`).set(g); render();
+      return `Saved ${g.name}.`;
+    } },
+  { name: "record_feedback", description: "Record that the person who sent the latest message likes or dislikes one of the listed ideas (exact name).",
+    inputSchema: { type: "object", properties: { idea: { type: "string" }, liked: { type: "boolean" } }, required: ["idea", "liked"] },
+    async execute(a) {
+      if (!IDEA_BY_NAME[a.idea]) throw new Error(`No idea called "${a.idea}". Use an exact name from get_suggestions.`);
+      await saveFeedback(a.idea, a.liked ? 1 : -1); render();
+      return "Noted.";
+    } },
+  { name: "get_suggestions", description: "Run the ranking algorithm. Returns the top 10 ideas, best first, with the reasons each fits, plus who has given preferences.",
+    async execute() {
+      if (!planLocation()) throw new Error("Birthday details are incomplete: need place, setting, month and hemisphere.");
+      return { ideas: currentIdeas().map(({ name, score, reasons }) => ({ name, score, reasons })),
+               people: members().length, birthdayVibe: S.plan.birthdayVibe || null };
+    } },
+  { name: "start_vote", description: "Freeze the current top 10 and open voting in the app.",
+    async execute() { if (!planLocation()) throw new Error("Nothing to vote on yet."); await startVote(); return "Voting is open in the app."; } },
+];
+
+function stateBrief() {
+  const p = S.plan || {};
+  return JSON.stringify({
+    birthday: p.birthdayPerson ? { person: p.birthdayPerson, vibe: p.birthdayVibe || null, place: p.place || null, setting: p.setting || null,
+      nearby: p.features || [], month: p.month ? MONTHS[p.month - 1] : null, climate: p.hemisphere || null } : null,
+    phase: phase(),
+    people: [...Object.entries(S.friends).map(([u, f]) => ({ name: nameOf(u) === "You" ? (S.names[u] || "the sender") : nameOf(u), ...f })),
+             ...Object.values(S.guests)],
+  });
+}
+
+async function askBot(senderName) {
+  if (!sample || botBusy) return;
+  const recent = S.chat.slice(-30);
+  const turns = [{ role: "user", content: `${BOT_RULES}\n\nCurrent plan (from the app's shared data): ${stateBrief()}\n\nThe chat follows. Each friend's message starts with their name in square brackets.` }];
+  for (const m of recent) turns.push({ role: m.bot ? "assistant" : "user", content: m.bot ? m.text : `[${m.author === me.id ? senderName : nameOf(m.author)}]: ${m.text}` });
+  if (turns[turns.length - 1].role !== "user") return;
+  botBusy = true; pendingBot = null; botController = new AbortController(); render();
+  try {
+    const { text } = await sample(turns, {
+      cache: false, signal: botController.signal, tools: BOT_TOOLS,
+      onText: ({ text }) => { pendingBot = text; const live = $("bot-live"); if (live) live.textContent = text; },
+    });
+    if (text.trim()) await db.collection("chat").add({ author: me.id, bot: true, text: text.trim().slice(0, 4000), at: Date.now() });
+  } catch (e) {
+    const copy = {
+      not_granted: "The planner bot needs your OK to use Claude. You can still plan with the forms and the chat.",
+      rate_limited: "The planner bot is busy right now. Try again in a minute.",
+      sampling_disabled: "The planner bot isn't available on your account. The forms still work.",
+      refused: "The bot can't help with that one. Let's get back to the birthday!",
+    }[e?.code] || (e?.code === "cancelled" ? null : "The bot couldn't answer just now. Try again in a moment.");
+    if (e?.text?.trim()) await db.collection("chat").add({ author: me.id, bot: true, text: e.text.trim().slice(0, 4000), at: Date.now() }).catch(() => {});
+    if (copy) { $("bot-off").textContent = copy; $("bot-off").hidden = false; }
+    if (e?.code === "not_granted" || e?.code === "sampling_disabled") sample = null;
+  } finally {
+    botBusy = false; pendingBot = null; render();
+  }
+}
+
+$("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = $("text").value.trim();
+  if (!text || !db || !me.id) return;
+  $("text").value = "";
+  try {
+    const ref = await db.collection("chat").add({ author: me.id, bot: false, text: text.slice(0, 800), at: Date.now() });
+    if (!S.chat.some((m) => m.id === ref.id)) S.chat.push({ id: ref.id, author: me.id, bot: false, text, at: Date.now() });
+    renderChat();
+    const myName = (await user?.me())?.name || "Me";
+    askBot(myName);
+  } catch (err) { $("bot-off").textContent = writeError(err); $("bot-off").hidden = false; }
+});
+
+/* ---------- Boot ---------- */
+render();
+(async () => {
+  const use = (name) => (window.claude?.use ? window.claude.use(name) : Promise.resolve(null));
+  [db, user, sample] = await Promise.all([use("db"), use("user"), use("sample")]);
+  if (user) { me = await user.me(); const w = await user.can("data.write"); if (w === false) canWrite = false; }
+  if (!sample) { $("bot-off").textContent = "The planner bot isn't available here. You can still chat with the group and use the forms."; $("bot-off").hidden = false; }
+  if (!db || !me.id) {
+    $("text").disabled = true; $("send").disabled = true;
+    $("text").placeholder = "Sign in to Claude to chat and save";
+    $("me-note").textContent = "Saving needs a signed-in Claude account with access to this page.";
+    render(); return;
+  }
+  const onErr = (e) => { if (e.code === "revoked") { canWrite = false; render(); } };
+  const resolveNames = async () => {
+    const ids = [...new Set([...Object.keys(S.friends), ...Object.keys(S.votes), ...S.chat.map((m) => m.author)])].filter(Boolean);
+    if (!user || !ids.length) return;
+    const ps = await user.profiles(ids);
+    let changed = false;
+    for (const id of ids) { const n = ps[id]?.name || ""; if (n && S.names[id] !== n) { S.names[id] = n; changed = true; } }
+    if (changed) render();
+  };
+  db.doc("plan/main").onSnapshot((s) => { S.plan = s.exists ? { ...s.data() } : null; render(); }, onErr);
+  const coll = (name, key) => db.collection(name).onSnapshot((q) => {
+    S[key] = Object.fromEntries(q.docs.map((d) => [d.id, { ...d.data() }])); render(); resolveNames();
+  }, onErr);
+  coll("friends", "friends"); coll("guests", "guests"); coll("feedback", "feedback"); coll("votes", "votes");
+  db.collection("chat").orderBy("at", "desc").limit(120).onSnapshot((q) => {
+    S.chat = q.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => typeof m.text === "string").reverse();
+    renderChat(); resolveNames();
+  }, onErr);
+})();
+</script>
