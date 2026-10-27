@@ -46,9 +46,29 @@ def summarize_group(members, birthday_vibe=None):
     return {"vibes": vibes, "places": places, "budget": budget, "size": len(members) + 1}
 
 
-def score_idea(idea, location, group):
+def learn_weights(feedback):
+    """Turn thumbs up/down on ideas into per-trait weights.
+
+    `feedback` maps idea name -> +1 (liked) or -1 (disliked). Every vibe of a
+    liked idea gains weight and every vibe of a disliked idea loses it, and the
+    same for indoor/outdoor, so similar ideas rise or fall together.
+    """
+    by_name = {idea["name"]: idea for idea in IDEAS}
+    weights = Counter()
+    for name, signal in feedback.items():
+        idea = by_name.get(name)
+        if idea is None:
+            continue
+        for vibe in idea["vibes"]:
+            weights[vibe] += signal
+        weights["outdoor" if idea["outdoor"] else "indoor"] += signal
+    return weights
+
+
+def score_idea(idea, location, group, weights=None):
     """Return (score, reasons) for an idea, or None if it isn't possible."""
     season = location["season"]
+    weights = weights or Counter()
 
     # Hard filters: things that make the idea impossible where they live.
     if location["setting"] not in idea["settings"]:
@@ -107,19 +127,56 @@ def score_idea(idea, location, group):
     elif idea["max_group"] >= 20:
         reasons.append("works for big groups")
 
+    # What the group has liked or disliked so far.
+    learned = sum(weights[v] for v in idea["vibes"])
+    learned += weights["outdoor" if idea["outdoor"] else "indoor"]
+    if learned != 0:
+        score += 2 * learned
+        if learned > 0:
+            reasons.append("similar to ideas you liked")
+
     return score, reasons
 
 
-def suggest(location, group, count=10):
-    """Return the `count` best ideas as dicts with name, score and reasons."""
-    scored = []
+def overlap(a, b):
+    """How alike two ideas are: shared vibes, same feature, same indoor/outdoor."""
+    shared = len(set(a["vibes"]) & set(b["vibes"]))
+    if a["needs"] is not None and a["needs"] == b["needs"]:
+        shared += 1
+    if a["outdoor"] == b["outdoor"]:
+        shared += 1
+    return shared
+
+
+def suggest(location, group, count=10, feedback=None, diversity=1.0):
+    """Return the `count` best ideas as dicts with name, score and reasons.
+
+    Ideas the group disliked are dropped. The list is then picked greedily:
+    each pick is the idea with the best score minus a penalty for being too
+    similar to ideas already picked, so the 10 aren't all variations of one
+    thing. `diversity=0` turns that off and ranks purely by score.
+    """
+    feedback = feedback or {}
+    weights = learn_weights(feedback)
+    candidates = []
     for order, idea in enumerate(IDEAS):
-        result = score_idea(idea, location, group)
+        if feedback.get(idea["name"], 0) < 0:
+            continue
+        result = score_idea(idea, location, group, weights)
         if result is not None:
             score, reasons = result
-            scored.append((score, order, idea, reasons))
-    scored.sort(key=lambda item: (-item[0], item[1]))
+            candidates.append((score, order, idea, reasons))
+
+    picked = []
+    while candidates and len(picked) < count:
+        def adjusted(item):
+            penalty = max((overlap(item[2], p[2]) for p in picked), default=0)
+            return (-(item[0] - diversity * penalty), item[1])
+        best = min(candidates, key=adjusted)
+        candidates.remove(best)
+        picked.append(best)
+
     return [
         {"name": idea["name"], "score": score, "reasons": reasons}
-        for score, _, idea, reasons in scored[:count]
+        for score, _, idea, reasons in picked
     ]

@@ -13,7 +13,7 @@ on a winner.
 python3 -m birthday_planner
 ```
 
-No extra packages needed (Python 3.8+).
+No extra packages needed (Python 3.8+). The chatbot version needs the `anthropic` package.
 
 ### How it works
 
@@ -36,6 +36,35 @@ No extra packages needed (Python 3.8+).
    Each suggestion lists why it was picked.
 4. **Voting.** Each friend ranks their top 3 picks (3, 2 and 1 points). Ties are
    broken by first-place votes, then by the planner's own ranking.
+
+### AI chatbot version
+
+```bash
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY=...   # your Claude API key
+python3 -m birthday_planner.chatbot
+```
+
+Instead of answering a fixed questionnaire, you chat with Claude ("it's Sam's
+birthday in July, we're in Lisbon by the sea, Ana loves a party..."). The
+**algorithm** does the tailoring, not the language model:
+
+1. **Structured extraction.** Claude turns what you say into a profile through
+   tools (`update_location`, `add_friend`). The app checks every value, and
+   Claude asks again if a value doesn't fit.
+2. **Constraint filtering and scoring.** `get_suggestions` runs the same scoring
+   as the command-line version. Claude can only present ideas the algorithm
+   returned, never make up its own.
+3. **Learning from feedback.** "We don't like karaoke" or "the climbing
+   sounds fun" becomes `record_feedback`. A disliked idea is removed. Every
+   vibe and indoor/outdoor trait of a liked or disliked idea gains or loses
+   weight, so similar ideas move up or down too (a simple content-based
+   recommender).
+4. **Diversity re-ranking.** The top 10 are picked one at a time, with a
+   penalty for being too similar to ideas already picked. This keeps the list
+   from being ten versions of the same night out.
+5. **Group vote.** When the group is happy, Claude calls `start_vote` and
+   everyone ranks their top 3 as before.
 
 ### Tests
 
