@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Birthday Planner</title>
+<style>
+  :root {
+    --bg: #fbf7f4; --surface: #ffffff; --surface-2: #f3ece6; --text: #2a2220;
+    --muted: #7a6c66; --border: #e7ddd5; --accent: #d9485f; --accent-text: #ffffff;
+    --bot: #fff1e8; --me: #d9485f; --me-text: #ffffff; --gold: #e3a21a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1716; --surface: #262120; --surface-2: #312a28; --text: #f3ebe7;
+      --muted: #a8988f; --border: #3d3532; --accent: #f06a7e; --accent-text: #1b1716;
+      --bot: #34292a; --me: #f06a7e; --me-text: #1b1716; --gold: #f0b93c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  button, input { font: inherit; color: inherit; }
+  button {
+    border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer;
+    background: var(--accent); color: var(--accent-text); font-weight: 600;
+  }
+  button.ghost { background: var(--surface-2); color: var(--text); }
+  button:disabled { opacity: .5; cursor: default; }
+  input {
+    width: 100%; padding: 12px 14px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface);
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); }
+  .error { color: var(--accent); min-height: 1.4em; margin: 8px 0 0; font-size: 14px; }
+
+  /* Welcome screen */
+  #welcome { max-width: 420px; margin: 0 auto; padding: 48px 16px; }
+  #welcome h1 { font-size: 32px; margin: 0 0 4px; }
+  #welcome .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+    padding: 20px; margin-top: 24px; display: grid; gap: 12px;
+  }
+  .row { display: flex; gap: 8px; }
+  .row > input { flex: 1; }
+
+  /* Room screen */
+  #room { height: 100%; display: flex; flex-direction: column; }
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  header h2 { font-size: 17px; margin: 0; flex: 1; min-width: 0; }
+  header .code { font-family: ui-monospace, monospace; letter-spacing: 2px; }
+  header button { padding: 8px 12px; font-size: 14px; }
+  .tabs { display: none; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
+  section { min-height: 0; display: flex; flex-direction: column; }
+  #chat-panel { border-right: 1px solid var(--border); }
+
+  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg .who { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+  .msg.bot { background: var(--bot); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.other { background: var(--surface); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.me { background: var(--me); color: var(--me-text); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.me .who { color: inherit; opacity: .8; }
+  .msg.app { align-self: center; background: none; color: var(--muted); font-size: 13px; padding: 0; }
+  .typing { color: var(--muted); font-size: 14px; padding: 0 16px 8px; }
+  #composer { display: flex; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--surface); }
+  #composer input { flex: 1; }
+
+  #side { overflow-y: auto; padding: 16px; }
+  #side h3 { margin: 0 0 4px; font-size: 18px; }
+  .idea {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px 14px; margin-top: 10px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+  }
+  .idea .num {
+    width: 36px; height: 28px; border-radius: 14px; background: var(--surface-2);
+    display: grid; place-items: center; font-weight: 700; font-size: 14px; grid-row: span 3;
+  }
+  .idea .name { font-weight: 600; }
+  .idea .why { font-size: 14px; color: var(--muted); }
+  .venues { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+  .venues a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .venues a:hover { text-decoration: underline; }
+  .idea.pickable { cursor: pointer; user-select: none; }
+  .idea.pickable:hover { border-color: var(--accent); }
+  .idea.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .idea.picked .num { background: var(--accent); color: var(--accent-text); }
+  .vote-bar { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 4px; display: grid; gap: 8px; }
+  .result { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin-top: 10px; }
+  .bar { grid-column: span 2; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); }
+  .winner { background: var(--surface); border: 2px solid var(--gold); border-radius: 18px; padding: 16px; text-align: center; margin-top: 12px; }
+  .winner .big { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .empty { margin-top: 24px; text-align: center; color: var(--muted); }
+
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; }
+    #chat-panel { border-right: 0; }
+    .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .tabs button {
+      flex: 1; background: none; color: var(--muted); border-radius: 0; padding: 10px;
+      border-bottom: 2px solid transparent;
+    }
+    .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+    main[data-tab="chat"] #side-panel, main[data-tab="ideas"] #chat-panel { display: none; }
+    .badge { display: inline-block; min-width: 8px; height: 8px; border-radius: 4px; background: var(--accent); margin-left: 6px; vertical-align: middle; }
+  }
+</style>
+</head>
+<body>
+
+<div id="welcome">
+  <h1>🎂 Birthday Planner</h1>
+  <p class="muted">Plan the perfect birthday with friends. Chat with the planner bot, get 10 ideas tailored to where they live, see real local spots, then vote together.</p>
+  <div class="card">
+    <label for="name">Your name</label>
+    <input id="name" maxlength="30" autocomplete="given-name" placeholder="e.g. Ana">
+    <button id="create">Start a new plan</button>
+    <div class="muted" style="text-align:center">or join one</div>
+    <div class="row">
+      <input id="code" maxlength="5" placeholder="Room code" autocapitalize="characters">
+      <button id="join" class="ghost">Join</button>
+    </div>
+    <p class="error" id="welcome-error"></p>
+  </div>
+</div>
+
+<div id="room" class="hidden">
+  <header>
+    <h2>Room <span class="code" id="room-code"></span> <span class="muted" id="members" style="font-weight:400;font-size:14px"></span></h2>
+    <button class="ghost" id="share">Invite</button>
+  </header>
+  <div class="tabs">
+    <button data-tab="chat" class="active">Chat</button>
+    <button data-tab="ideas" id="ideas-tab">Ideas</button>
+  </div>
+  <main data-tab="chat">
+    <section id="chat-panel">
+      <div id="messages" aria-live="polite"></div>
+      <div class="typing hidden" id="typing">Planner bot is thinking…</div>
+      <form id="composer">
+        <input id="text" maxlength="1000" placeholder="Message the group and the bot" autocomplete="off">
+        <button type="submit">Send</button>
+      </form>
+    </section>
+    <section id="side-panel">
+      <div id="side"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+let me = store.get("bp-name") || "";
+let code = new URLSearchParams(location.search).get("room") || "";
+let seen = 0;
+let state = null;
+let picks = [];
+let sideKey = "";
+
+$("#name").value = me;
+$("#code").value = code.toUpperCase();
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Something went wrong.");
+  return data;
+}
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v; else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v);
+  }
+  for (const child of children) if (child != null) node.append(child);
+  return node;
+}
+
+function readName() {
+  const name = $("#name").value.trim();
+  if (!name) throw new Error("Please enter your name first.");
+  me = name; store.set("bp-name", name);
+  return name;
+}
+
+async function enter(roomCode) {
+  const name = readName();
+  await api(`/api/rooms/${roomCode}/join`, { name });
+  code = roomCode.toUpperCase();
+  history.replaceState(null, "", `?room=${code}`);
+  $("#welcome").classList.add("hidden");
+  $("#room").classList.remove("hidden");
+  $("#room-code").textContent = code;
+  poll();
+}
+
+$("#create").onclick = async () => {
+  try { readName(); const { code } = await api("/api/rooms", {}); await enter(code); }
+  catch (e) { $("#welcome-error").textContent = e.message; }
+};
+$("#join").onclick = async () => {
+  try { await enter($("#code").value.trim()); }
+  catch (e) { $("#welcome-error").textContent = e.message; }
+};
+
+$("#share").onclick = async () => {
+  const url = `${location.origin}${location.pathname}?room=${code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: "Help plan a birthday!", url });
+    else { await navigator.clipboard.writeText(url); $("#share").textContent = "Link copied!"; setTimeout(() => $("#share").textContent = "Invite", 1500); }
+  } catch {}
+};
+
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
+  $("main").dataset.tab = b.dataset.tab;
+  if (b.dataset.tab === "ideas") $("#ideas-tab").querySelector(".badge")?.remove();
+});
+
+$("#composer").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("#text").value.trim();
+  if (!text) return;
+  $("#text").value = "";
+  try { await api(`/api/rooms/${code}/messages`, { name: me, text }); poll(); }
+  catch (err) { addMessage({ sender: "App", text: err.message }); }
+};
+
+function addMessage(m) {
+  const kind = m.sender === "Bot" ? "bot" : m.sender === "App" ? "app" : m.sender === me ? "me" : "other";
+  const who = kind === "app" ? null : el("div", { class: "who" }, kind === "bot" ? "🎈 Planner bot" : m.sender);
+  const box = $("#messages");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  box.append(el("div", { class: `msg ${kind}` }, who, m.text));
+  if (atBottom || kind === "me") box.scrollTop = box.scrollHeight;
+}
+
+function ideaCard(s, i, opts = {}) {
+  const venues = s.venues.length ? el("ul", { class: "venues" }, ...s.venues.map((v) =>
+    el("li", {}, "📍 ", el("a", { href: v.url, target: "_blank", rel: "noopener noreferrer" }, v.name), v.note ? ` · ${v.note}` : ""))) : null;
+  const pickIndex = picks.indexOf(i + 1);
+  const label = opts.pickable && pickIndex >= 0 ? ["1st", "2nd", "3rd"][pickIndex] : String(i + 1);
+  return el("div", {
+    class: `idea${opts.pickable ? " pickable" : ""}${pickIndex >= 0 && opts.pickable ? " picked" : ""}`,
+    ...(opts.pickable ? { onclick: () => togglePick(i + 1), role: "button", tabindex: "0" } : {}),
+  }, el("div", { class: "num" }, label), el("div", { class: "name" }, s.name),
+     el("div", { class: "why" }, s.reasons.join(" · ") || "A solid all-rounder"), venues);
+}
+
+function togglePick(n) {
+  const at = picks.indexOf(n);
+  if (at >= 0) picks.splice(at, 1); else if (picks.length < 3) picks.push(n);
+  sideKey = ""; renderSide();
+}
+
+async function submitVote() {
+  try { await api(`/api/rooms/${code}/vote`, { name: me, picks }); poll(); }
+  catch (e) { alert(e.message); }
+}
+
+async function closeVote() {
+  try { await api(`/api/rooms/${code}/close`, {}); poll(); }
+  catch (e) { alert(e.message); }
+}
+
+function renderSide() {
+  const s = state;
+  const key = JSON.stringify([s.phase, s.suggestions, s.voted, s.results, picks, s.members]);
+  if (key === sideKey) return;
+  sideKey = key;
+  const side = $("#side");
+  side.replaceChildren();
+
+  if (s.phase === "results") {
+    const ranking = s.results.ranking;
+    const max = Math.max(1, ...ranking.map((r) => r.points));
+    side.append(el("h3", {}, "Results"),
+      el("div", { class: "winner" }, "🏆 The winner is", el("div", { class: "big" }, ranking[0].name),
+        s.results.tie ? el("div", { class: "muted" }, "It was a tie, broken by the planner's ranking.") : null));
+    for (const r of ranking) {
+      side.append(el("div", { class: "result" }, el("span", {}, r.name), el("span", { class: "muted" }, `${r.points} ${r.points === 1 ? "pt" : "pts"}`),
+        el("div", { class: "bar" }, el("div", { style: `width:${(r.points / max) * 100}%` }))));
+    }
+    return;
+  }
+
+  if (!s.suggestions.length) {
+    side.append(el("h3", {}, "Ideas"), el("p", { class: "empty" }, "Tell the bot about the birthday person and where they live. Ten tailored ideas will appear here."));
+    return;
+  }
+
+  if (s.phase === "voting") {
+    const voted = s.voted.includes(me);
+    side.append(el("h3", {}, "Vote"),
+      el("p", { class: "muted" }, voted ? `Thanks! ${s.voted.length} of ${s.members.length} have voted. You can change your picks until everyone's in.`
+                                        : "Tap your top 3 in order: 1st gets 3 points, 2nd 2, 3rd 1."));
+    s.suggestions.forEach((idea, i) => side.append(ideaCard(idea, i, { pickable: true })));
+    side.append(el("div", { class: "vote-bar" },
+      el("button", { onclick: submitVote, ...(picks.length === 3 ? {} : { disabled: "" }) }, picks.length === 3 ? (voted ? "Update my vote" : "Submit my vote") : `Pick ${3 - picks.length} more`),
+      s.voted.length ? el("button", { class: "ghost", onclick: closeVote }, "Close voting now") : null));
+    return;
+  }
+
+  side.append(el("h3", {}, "Top 10 ideas"), el("p", { class: "muted" }, "Tell the bot what you like or don't, and the list updates."));
+  s.suggestions.forEach((idea, i) => side.append(ideaCard(idea, i)));
+}
+
+let lastSuggestions = "";
+let timer = null;
+let pollError = "";
+async function poll() {
+  clearTimeout(timer);
+  try {
+    state = await api(`/api/rooms/${code}?since=${seen}`);
+    state.chat.forEach(addMessage);
+    seen += state.chat.length;
+    $("#typing").classList.toggle("hidden", !state.bot_busy);
+    $("#members").textContent = `· ${state.members.join(", ")}`;
+    $("#text").disabled = state.phase !== "planning";
+    $("#composer button").disabled = state.phase !== "planning";
+    $("#text").placeholder = state.phase === "planning" ? "Message the group and the bot" : "Planning is done. Vote in the Ideas tab!";
+    const sig = JSON.stringify(state.suggestions) + state.phase;
+    if (sig !== lastSuggestions && lastSuggestions && $("main").dataset.tab === "chat" && !$("#ideas-tab .badge")) {
+      $("#ideas-tab").append(el("span", { class: "badge" }));
+    }
+    lastSuggestions = sig;
+    renderSide();
+    pollError = "";
+  } catch (e) {
+    if (e.message !== pollError) addMessage({ sender: "App", text: `Connection problem: ${e.message}` });
+    pollError = e.message;
+    if (e.message === "Room not found.") return;
+  }
+  timer = setTimeout(poll, state && state.bot_busy ? 1200 : 2500);
+}
+
+if (code && me) enter(code).catch((e) => { $("#welcome-error").textContent = e.message; });
+</script>
+</body>
+</html>

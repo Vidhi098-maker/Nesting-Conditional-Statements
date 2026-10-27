@@ -66,6 +66,29 @@ birthday in July, we're in Lisbon by the sea, Ana loves a party..."). The
 5. **Group vote.** When the group is happy, Claude calls `start_vote` and
    everyone ranks their top 3 as before.
 
+### Group web app (chat from your phones)
+
+```bash
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY=...
+python3 -m birthday_planner.web        # prints a link friends on your Wi-Fi can open
+```
+
+- One person taps **Start a new plan** and shares the invite link or the 5-letter room code.
+- Everyone chats with the planner bot in one group chat. The bot sees who said
+  what, so it can save each friend's preferences.
+- The **Ideas** panel shows the algorithm's live top 10. Claude uses web search
+  to find **real local venues** for the top ideas and pins them with links.
+  It's only allowed to pin places that appeared in its search results.
+- When the group is ready, the bot opens voting. Everyone taps their top 3 on
+  their own phone, and results show when all have voted (or someone closes
+  the vote early).
+
+Rooms are kept in memory, so they disappear when the server restarts. Anyone
+with the link can chat, and every message uses your Claude API credits, so only
+share it with your group. To let friends join from outside your Wi-Fi, run
+the server somewhere public or use a tunnelling tool.
+
 ### Tests
 
 ```bash

@@ -9,6 +9,10 @@ decisions. Claude can only change the plan through these tools:
   get_suggestions  - run the scoring algorithm and get the ranked top 10
   start_vote       - hand over to the group vote
 
+The web version (web.py) also gives Claude web search plus:
+
+  attach_venues    - pin real local places found by search to a ranked idea
+
 so every recommendation it makes is one the algorithm actually ranked.
 """
 
@@ -114,6 +118,35 @@ TOOLS = [
     },
 ]
 
+WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search", "max_uses": 8}
+
+ATTACH_VENUES_TOOL = {
+    "name": "attach_venues",
+    "description": "Pin real places found with web_search to one of the current suggestions, "
+                   "so the group can see where they could actually do it. Only use places that "
+                   "appeared in your search results. Replaces any venues already attached to that idea.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "idea": {"type": "string", "description": "Exact idea name from get_suggestions."},
+            "venues": {
+                "type": "array",
+                "maxItems": 3,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "url": {"type": "string", "description": "Source page from the search results."},
+                        "note": {"type": "string", "description": "One short line: area, price or why it fits."},
+                    },
+                    "required": ["name", "url"],
+                },
+            },
+        },
+        "required": ["idea", "venues"],
+    },
+}
+
 IDEA_NAMES = {idea["name"] for idea in IDEAS}
 
 
@@ -131,6 +164,7 @@ class Planner:
         self.friends = {}
         self.feedback = {}
         self.suggestions = []
+        self.venues = {}
         self.vote_requested = False
 
     def run_tool(self, name, args):
@@ -185,6 +219,18 @@ class Planner:
         self.suggestions = suggest(self.location, group, feedback=self.feedback)
         return json.dumps(self.suggestions)
 
+    def tool_attach_venues(self, idea, venues):
+        if idea not in {s["name"] for s in self.suggestions}:
+            raise ToolError(f"{idea!r} isn't in the current suggestions.")
+        cleaned = []
+        for venue in venues[:3]:
+            url = str(venue.get("url", ""))
+            if not url.startswith(("https://", "http://")):
+                raise ToolError("Each venue needs the http(s) URL of its source page.")
+            cleaned.append({"name": str(venue["name"]), "url": url, "note": str(venue.get("note", ""))})
+        self.venues[idea] = cleaned
+        return f"Attached {len(cleaned)} venue(s) to {idea}."
+
     def tool_start_vote(self):
         if not self.suggestions:
             raise ToolError("Call get_suggestions first.")
@@ -192,14 +238,19 @@ class Planner:
         return "The vote will start once you finish this message."
 
 
-def run_turn(client, planner, messages):
-    """Send the conversation to Claude, run any tools it calls, and return its reply text."""
-    while True:
+def run_turn(client, planner, messages, system=SYSTEM_PROMPT, tools=TOOLS, max_steps=15):
+    """Send the conversation to Claude, run any tools it calls, and return its reply text.
+
+    The caller appends the new user message first. If Claude declines, that
+    whole turn is rolled back so the history stays valid for the next one.
+    """
+    turn_start = len(messages) - 1
+    for _ in range(max_steps):
         response = client.beta.messages.create(
             model=MODEL,
             max_tokens=16000,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
+            system=system,
+            tools=tools,
             messages=messages,
             output_config={"effort": "medium"},
             betas=["server-side-fallback-2026-07-01"],
@@ -208,7 +259,10 @@ def run_turn(client, planner, messages):
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason == "refusal":
+            del messages[turn_start:]
             return "Sorry, I can't help with that one. Let's get back to the birthday plans!"
+        if response.stop_reason == "pause_turn":
+            continue  # a long web search paused; re-sending resumes it
         if response.stop_reason != "tool_use":
             return "".join(b.text for b in response.content if b.type == "text")
 
@@ -223,6 +277,7 @@ def run_turn(client, planner, messages):
                 results.append({"type": "tool_result", "tool_use_id": block.id,
                                 "content": f"Error: {err}", "is_error": True})
         messages.append({"role": "user", "content": results})
+    return "Sorry, I got a bit lost there. Could you say that again?"
 
 
 def run_vote(planner, ask=input):
