@@ -158,7 +158,7 @@ class App:
                 fields = {k: data[k] for k in ("kind", "title", "place", "setting", "features", "hemisphere", "month", "currency") if k in data}
                 plan.set_details(fields, uid)
             elif action == "agree-details":
-                plan.agree_details(uid, data.get("version"))
+                plan.vote_plan(uid, data.get("agree", True) is not False, data.get("version"))
             elif action == "preferences":
                 plan.set_preferences(uid, data.get("vibe"), data.get("place"), data.get("budget_max"))
             elif action == "agree":

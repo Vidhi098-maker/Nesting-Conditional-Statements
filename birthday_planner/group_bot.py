@@ -68,8 +68,8 @@ TOOLS = [
          "person": PERSON, "vibe": {"type": "string", "enum": list(VIBES)},
          "place": {"type": "string", "enum": list(PLACE_PREFS)}, "budget_max": {"type": "number", "minimum": 1}},
          "required": ["person", "vibe", "place"]}},
-    {"name": "agree_plan", "description": "Record that a sender agrees the current plan details. Only when they said so themselves.",
-     "input_schema": {"type": "object", "properties": {"person": PERSON}, "required": ["person"]}},
+    {"name": "agree_plan", "description": "Record a sender's tick (agrees) or cross (doesn't agree) on the current plan details. Only what they said themselves.",
+     "input_schema": {"type": "object", "properties": {"person": PERSON, "agrees": {"type": "boolean"}}, "required": ["person"]}},
     {"name": "agree_budget", "description": "Record that a sender accepts the current group budget. Only when they said so themselves.",
      "input_schema": {"type": "object", "properties": {"person": PERSON}, "required": ["person"]}},
     {"name": "add_friend", "description": "Save preferences for a friend who was mentioned but isn't using the app.",
@@ -136,9 +136,9 @@ class GroupBot:
         self.plan.set_preferences(uid, vibe, place, budget_max)
         return json.dumps({"saved": True, "groupBudget": self.plan.budget()["limit"]})
 
-    def tool_agree_plan(self, person):
-        self.plan.agree_details(self._sender(person))
-        return "Agreed to the plan details."
+    def tool_agree_plan(self, person, agrees=True):
+        self.plan.vote_plan(self._sender(person), agrees)
+        return "Agreed to the plan details." if agrees else "Noted that they don't agree the plan details yet."
 
     def tool_agree_budget(self, person):
         uid = self._sender(person)

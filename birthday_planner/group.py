@@ -268,6 +268,10 @@ class GroupPlan:
     def kind(self):
         return self.details.get("kind") if self.details.get("kind") in KINDS else None
 
+    def members(self):
+        """Everyone in the plan who hasn't left, with or without preferences."""
+        return [(uid, p) for uid, p in self.people.items() if p.get("active", True)]
+
     def participants(self):
         return [(uid, p) for uid, p in self.people.items() if p.get("vibe") in VIBES and p.get("active", True)]
 
@@ -289,12 +293,17 @@ class GroupPlan:
         return {"limit": limit, "missing": missing, "agreed": agreed, "all_agreed": all_agreed}
 
     def details_agreement(self):
-        """Who has agreed the current plan details."""
-        parts = self.participants()
+        """Each person's tick or cross on the current plan details. Everyone in
+        the plan counts, so the tally always matches the number of people."""
+        members = self.members()
         ready = bool(self.kind() and self.details.get("place"))
-        agreed = [uid for uid, p in parts if ready and p.get("details_ok") == self.details_version]
-        return {"version": self.details_version, "agreed": agreed,
-                "all_agreed": ready and bool(parts) and len(agreed) == len(parts)}
+        votes = {uid: (p.get("plan_vote") or {}) for uid, p in members}
+        current = {uid: v.get("agree") for uid, v in votes.items() if ready and v.get("version") == self.details_version}
+        agreed = [uid for uid, _ in members if current.get(uid) is True]
+        disagreed = [uid for uid, _ in members if current.get(uid) is False]
+        waiting = [uid for uid, _ in members if uid not in current]
+        return {"version": self.details_version, "agreed": agreed, "disagreed": disagreed, "waiting": waiting,
+                "total": len(members), "all_agreed": ready and bool(members) and len(agreed) == len(members)}
 
     def context(self):
         d = self.details
@@ -372,7 +381,13 @@ class GroupPlan:
         if not parts:
             out.append("someone needs to save their preferences")
         elif not d["all_agreed"]:
-            out.append(f"waiting for {self.names([u for u, _ in parts if u not in d['agreed']])} to agree the plan details")
+            if d["disagreed"]:
+                out.append(f"{self.names(d['disagreed'])} doesn't agree the plan yet")
+            if d["waiting"]:
+                out.append(f"waiting for {self.names(d['waiting'])} to agree the plan")
+        elif len(parts) < len(self.members()):
+            waiting = [u for u, p in self.members() if p.get("vibe") not in VIBES]
+            out.append(f"waiting for {self.names(waiting)} to add their preferences")
         elif b["missing"]:
             out.append(f"waiting for {self.names(b['missing'])} to add a budget")
         elif not b["all_agreed"]:
@@ -442,18 +457,24 @@ class GroupPlan:
             self.details = d
             self.details_version += 1
             for p in self.people.values():
-                p.pop("details_ok", None)
+                p.pop("plan_vote", None)
                 p.pop("budget_ok", None)
-        if uid in self.people and self.people[uid].get("vibe") in VIBES:
-            self.people[uid]["details_ok"] = self.details_version
+        if uid in self.people and self.people[uid].get("active", True):
+            self.people[uid]["plan_vote"] = {"version": self.details_version, "agree": True}
 
-    def agree_details(self, uid, version=None):
-        p = self._participant(uid)
+    def vote_plan(self, uid, agree, version=None):
+        """A tick (agree) or cross (don't agree) on the current plan details."""
+        p = self.people.get(uid)
+        if not p or not p.get("active", True):
+            raise PlanError("Join the plan first.")
         if not (self.kind() and self.details.get("place")):
             raise PlanError("There are no plan details to agree yet.")
         if version is not None and version != self.details_version:
-            raise PlanError("The plan details just changed. Check them and agree again.")
-        p["details_ok"] = self.details_version
+            raise PlanError("The plan details just changed. Check them and answer again.")
+        p["plan_vote"] = {"version": self.details_version, "agree": bool(agree)}
+
+    def agree_details(self, uid, version=None):
+        self.vote_plan(uid, True, version)
 
     def set_preferences(self, uid, vibe, place, budget_max):
         if uid not in self.people:
@@ -608,7 +629,9 @@ class GroupPlan:
                 "joined": p.get("vibe") in VIBES, "active": p.get("active", True), "guest": False,
                 "vibe": p.get("vibe"), "place": p.get("place"), "budget_max": bm,
                 "agreed": pid in b["agreed"], "sets_budget": bm is not None and bm == b["limit"],
-                "agreed_details": pid in da["agreed"], "rated": pid in rated,
+                "agreed_details": pid in da["agreed"],
+                "plan_vote": "yes" if pid in da["agreed"] else "no" if pid in da["disagreed"] else None,
+                "rated": pid in rated,
                 "signoff": "in" if pid in so["in"] else "out" if pid in so["out"] else None,
             })
         for g in self.guests.values():
@@ -616,6 +639,7 @@ class GroupPlan:
             people.append({"name": g["name"], "is_you": False, "is_host": False, "id": None, "joined": True,
                            "active": True, "guest": True, "vibe": g["vibe"], "place": g["place"], "budget_max": bm,
                            "agreed": False, "sets_budget": bm is not None and bm == b["limit"], "agreed_details": False,
+                           "plan_vote": None,
                            "rated": False, "signoff": None})
 
         rows, winner, decided = self.result()
@@ -632,7 +656,9 @@ class GroupPlan:
                     "active": me.get("active", True)} if me else None,
             "people": people,
             "plan_agreement": {"version": da["version"], "all_agreed": da["all_agreed"], "agreed": len(da["agreed"]),
-                               "taking_part": len(parts), "you_agreed": uid in da["agreed"]},
+                               "disagreed": len(da["disagreed"]), "total": da["total"], "taking_part": da["total"],
+                               "you_agreed": uid in da["agreed"],
+                               "you": "yes" if uid in da["agreed"] else "no" if uid in da["disagreed"] else None},
             "budget": {"limit": b["limit"], "all_agreed": b["all_agreed"], "agreed": len(b["agreed"]),
                        "taking_part": len(parts), "missing": len(b["missing"])},
             "ideas": [idea_view(i) for i in ideas], "over_budget": over, "needs_area": needs_area,

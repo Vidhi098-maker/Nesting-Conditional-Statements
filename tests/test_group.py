@@ -83,7 +83,7 @@ class PlanAgreementTests(unittest.TestCase):
         self.assertEqual((d["agreed"], d["all_agreed"]), ([self.ids["Alex"]], False))
         with self.assertRaisesRegex(PlanError, "agree the plan details before the budget"):
             self.plan.agree_budget(self.ids["Alex"])
-        self.assertIn("waiting for Ana to agree the plan details", self.plan.vote_blockers()[0])
+        self.assertIn("waiting for Ana to agree the plan", self.plan.vote_blockers()[0])
         self.plan.agree_details(self.ids["Ana"], version=self.plan.details_version)
         self.assertTrue(self.plan.details_agreement()["all_agreed"])
 
@@ -99,6 +99,36 @@ class PlanAgreementTests(unittest.TestCase):
         self.assertEqual(self.plan.budget()["agreed"], [])
         with self.assertRaisesRegex(PlanError, "just changed"):
             self.plan.agree_details(self.ids["Alex"], version=old)
+
+    def test_a_cross_blocks_approval(self):
+        self.plan.set_details({"kind": "outing", "place": "London", "setting": "city"}, self.ids["Alex"])
+        self.plan.vote_plan(self.ids["Ana"], False)
+        d = self.plan.details_agreement()
+        self.assertEqual((d["agreed"], d["disagreed"], d["all_agreed"]), ([self.ids["Alex"]], [self.ids["Ana"]], False))
+        self.assertIn("Ana doesn't agree the plan yet", self.plan.vote_blockers()[0])
+        self.plan.vote_plan(self.ids["Ana"], True)                 # changes their mind
+        self.assertTrue(self.plan.details_agreement()["all_agreed"])
+
+    def test_tally_matches_everyone_in_the_plan(self):
+        self.plan.join("u:Ben", "Ben")                               # joined, no preferences yet
+        self.plan.set_details({"kind": "trip", "place": "London"}, self.ids["Alex"])
+        self.plan.agree_details(self.ids["Ana"])
+        d = self.plan.details_agreement()
+        self.assertEqual((len(d["agreed"]), d["total"], d["all_agreed"]), (2, 3, False))
+        self.plan.agree_details("u:Ben")                              # can agree before adding preferences
+        self.assertTrue(self.plan.details_agreement()["all_agreed"])
+        self.assertIn("waiting for Ben to add their preferences", self.plan.vote_blockers()[0])
+        self.plan.set_active(self.ids["Alex"], self.plan.token("u:Ben"), False)   # host sidelines Ben
+        self.assertEqual(self.plan.details_agreement()["total"], 2)
+        self.assertNotIn("Ben", " ".join(self.plan.vote_blockers()))
+
+    def test_view_shows_each_persons_tick_or_cross(self):
+        self.plan.set_details({"kind": "trip", "place": "London"}, self.ids["Alex"])
+        self.plan.vote_plan(self.ids["Ana"], False)
+        view = self.plan.view(self.ids["Ana"])
+        self.assertEqual({p["name"]: p["plan_vote"] for p in view["people"]}, {"Alex": "yes", "Ana": "no"})
+        self.assertEqual({k: view["plan_agreement"][k] for k in ("agreed", "disagreed", "total", "you")},
+                         {"agreed": 1, "disagreed": 1, "total": 2, "you": "no"})
 
     def test_nothing_to_agree_yet(self):
         with self.assertRaisesRegex(PlanError, "no plan details"):

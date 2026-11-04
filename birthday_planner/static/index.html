@@ -151,6 +151,29 @@
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td:first-child { white-space: normal; }
   tr.out td { color: var(--muted); }
+  /* Plan summary pop-up: what's been saved on the left, everyone's tick or cross on the right */
+  dialog.summary { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); color: var(--ink); }
+  dialog.summary::backdrop { background: rgba(20, 16, 32, .45); }
+  .sum-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px 12px; border-bottom: 1px solid var(--line); }
+  .sum-head h2 { font-size: 22px; font-weight: 800; }
+  .sum-close { border: 0; background: var(--surface-2); color: var(--ink); width: 34px; height: 34px; border-radius: 50%; font-size: 18px; line-height: 1; }
+  .sum-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 18px; padding: 16px 20px; }
+  .facts { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; font-size: 15px; align-content: start; }
+  .facts dt { color: var(--muted); font-size: 13px; font-weight: 600; padding-top: 2px; }
+  .facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+  .votes h3 { font-size: 15px; display: flex; justify-content: space-between; gap: 8px; }
+  .votes h3 span { font: 600 13px var(--body); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .votes ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+  .votes li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: 12px; background: var(--bg); }
+  .mark { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; flex: none; background: var(--surface-2); color: var(--muted); }
+  .mark.yes { background: var(--good); color: var(--accent-ink); }
+  .mark.no { background: var(--bad); color: var(--accent-ink); }
+  .sum-foot { display: grid; gap: 10px; padding: 14px 20px 20px; border-top: 1px solid var(--line); }
+  .approved { padding: 10px 14px; border-radius: 12px; background: var(--good-soft); color: var(--good); font-weight: 700; }
+  .vote-btns { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn.bad { background: var(--bad); color: var(--accent-ink); }
+  .btn[aria-pressed=true] { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px currentColor; }
+  @media (max-width: 640px) { .sum-grid { grid-template-columns: minmax(0, 1fr); } }
   .signoff { display: grid; gap: 10px; margin-top: 14px; padding: 14px 16px; border-radius: var(--r); background: var(--bg); }
 
   .roster { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
@@ -222,6 +245,8 @@
     <p class="error" id="lobby-error"></p>
   </div>
 </main>
+
+<dialog class="summary" id="plan-dialog" aria-labelledby="pd-title"></dialog>
 
 <div class="wrap hidden" id="room">
   <header class="top">
@@ -409,7 +434,7 @@ function renderHeader() {
 function renderSteps() {
   const b = S.budget, r = S.results, so = r?.signoff;
   const steps = [
-    ["Plan agreed", S.details.kind && S.details.place ? `${S.plan_agreement.agreed} of ${S.plan_agreement.taking_part}` : "to do", S.plan_agreement.all_agreed],
+    ["Plan approved", S.details.kind && S.details.place ? `${S.plan_agreement.agreed} of ${S.plan_agreement.total}` : "to do", S.plan_agreement.all_agreed],
     ["Everyone's in", `${b.taking_part} joined`, b.taking_part > 0 && b.missing === 0],
     ["Budget agreed", b.limit == null ? "no budgets yet" : `${b.agreed} of ${b.taking_part}`, b.all_agreed],
     ["Vote", S.phase === "planning" ? "not started" : `${S.rated} of ${b.taking_part}`, !!r],
@@ -435,21 +460,68 @@ function ideaRow(s, i) {
     thumbs, el("div", { class: "meta" }, links));
 }
 
+/* The plan summary: everything saved, and everyone's tick or cross beside it. */
+function planFacts() {
+  const d = S.details, local = KINDS[d.kind]?.[2];
+  const rows = [["Type of event", d.kind_label], ["Name", d.title || "Not named yet"],
+    [KINDS[d.kind]?.[1] || "Location", d.place],
+    local ? ["Kind of area", d.setting] : null,
+    ["Month", d.month ? `${MONTHS[d.month - 1]}${d.season ? ` (${d.season})` : ""}` : "Not sure yet"],
+    local && d.hemisphere ? ["Climate", HEMIS[d.hemisphere]] : null,
+    local && (d.features || []).length ? ["Nearby", d.features.join(", ")] : null,
+    ["Currency", CURRENCIES[d.currency]]].filter(Boolean);
+  return el("dl", { class: "facts" }, rows.flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v || "–")]));
+}
+
+function planVotes() {
+  const pa = S.plan_agreement;
+  const people = S.people.filter((p) => !p.guest && p.active);
+  return el("div", { class: "votes" },
+    el("h3", {}, "Does everyone agree?", el("span", {}, `${pa.agreed} of ${pa.total} agreed`)),
+    el("ul", {}, people.map((p) => el("li", {},
+      el("span", {}, p.name, p.is_you ? el("span", { class: "muted" }, " (you)") : null),
+      el("span", { class: `mark ${p.plan_vote || ""}`, "aria-label": p.plan_vote === "yes" ? "agrees" : p.plan_vote === "no" ? "doesn't agree" : "hasn't answered" },
+        p.plan_vote === "yes" ? "✓" : p.plan_vote === "no" ? "✗" : "…")))));
+}
+
+function planAnswer() {
+  const pa = S.plan_agreement;
+  if (pa.all_agreed) return el("div", { class: "approved" }, `✓ Plan approved by all ${pa.total}. Next: everyone's budget.`);
+  const vote = (agree) => act("agree-details", { version: pa.version, agree }).catch(say);
+  return el("div", { class: "vote-btns" },
+    el("button", { class: "btn good", "aria-pressed": String(pa.you === "yes"), onclick: () => vote(true) }, "✓ I agree"),
+    el("button", { class: "btn bad", "aria-pressed": String(pa.you === "no"), onclick: () => vote(false) }, "✗ I don't agree"),
+    el("span", { class: "muted", style: "font-size:13px" }, pa.disagreed ? "Someone doesn't agree yet. Talk it over in the chat, then change the details in \"What we're planning\"." : "Approved once everyone ticks ✓."));
+}
+
+let shownVersion = null;
+function renderPlanDialog() {
+  const dlg = $("plan-dialog");
+  if (!S?.details?.kind || !S.details.place) return;
+  put(dlg,
+    el("div", { class: "sum-head" }, el("h2", { id: "pd-title" }, "Plan summary"),
+      el("button", { class: "sum-close", "aria-label": "Close", onclick: () => dlg.close() }, "×")),
+    el("div", { class: "sum-grid" }, planFacts(), planVotes()),
+    el("div", { class: "sum-foot" }, planAnswer(),
+      el("span", { class: "muted", style: "font-size:13px" }, "Changing any of this means everyone answers again.")));
+}
+function openPlanDialog() {
+  renderPlanDialog();
+  shownVersion = S.plan_agreement.version;
+  if (!$("plan-dialog").open) $("plan-dialog").showModal();
+}
+
 function planCard() {
-  const pa = S.plan_agreement, d = S.details, you = S.you || {};
-  const tags = S.people.filter((p) => p.joined && p.active && !p.guest).map((p) =>
-    el("span", { class: `tag ${p.agreed_details ? "yes" : ""}` }, `${p.is_you ? "You" : p.name} · ${p.agreed_details ? "agreed" : "to confirm"}`));
-  let action;
-  if (!you.taking_part) action = el("span", { class: "muted" }, "Save your preferences below to take part.");
-  else if (pa.you_agreed) action = el("span", { class: "tag yes" }, "You agreed to this plan");
-  else action = el("button", { class: "btn good small", onclick: () => act("agree-details", { version: pa.version }).catch(say) }, "I agree to this plan");
-  const facts = [d.kind_label, d.title, d.kind === "trip" ? `from ${d.place}` : d.place, d.month ? MONTHS[d.month - 1] : "month not set", `${d.currency} budget`].filter(Boolean);
+  const pa = S.plan_agreement, d = S.details;
+  const facts = [d.kind_label, d.title, d.kind === "trip" ? `from ${d.place}` : d.place, d.month ? MONTHS[d.month - 1] : null].filter(Boolean);
+  const marks = S.people.filter((p) => !p.guest && p.active).map((p) =>
+    el("span", { class: `tag ${p.plan_vote === "yes" ? "yes" : p.plan_vote === "no" ? "no" : ""}` }, `${p.plan_vote === "yes" ? "✓" : p.plan_vote === "no" ? "✗" : "…"} ${p.is_you ? "You" : p.name}`));
   return el("div", { class: "budget" },
-    el("div", { class: "amount", style: "font-size:24px" }, pa.all_agreed ? "✓" : `${pa.agreed}/${pa.taking_part}`, el("small", {}, "agreed")),
-    el("div", {}, el("strong", {}, pa.all_agreed ? "Plan agreed by everyone" : "Does everyone agree on the plan?"),
-      el("div", { class: "muted", style: "font-size:13px" }, facts.join(" · ")),
-      el("div", { class: "muted", style: "font-size:13px" }, pa.all_agreed ? "Changing any of this means everyone agrees again." : "Everyone agrees this first, then the budget. To change it, edit \"What we're planning\" below.")),
-    el("div", { class: "actions" }, el("div", { class: "agree" }, tags), action));
+    el("div", { class: "amount", style: "font-size:24px" }, pa.all_agreed ? "✓" : `${pa.agreed}/${pa.total}`, el("small", {}, pa.all_agreed ? "approved" : "agreed")),
+    el("div", {}, el("strong", {}, pa.all_agreed ? "Plan approved by everyone" : "Does everyone agree on the plan?"),
+      el("div", { class: "muted", style: "font-size:13px" }, facts.join(" · "))),
+    el("div", { class: "actions" }, el("div", { class: "agree" }, marks),
+      el("button", { class: pa.all_agreed || pa.you ? "btn ghost small" : "btn good small", onclick: openPlanDialog }, pa.all_agreed || pa.you ? "View plan summary" : "Review and answer")));
 }
 
 function budgetCard() {
@@ -586,8 +658,8 @@ function renderPeople() {
       : p.agreed ? el("span", { class: "tag yes" }, "agreed budget") : el("span", { class: "tag" }, "to agree budget");
     const actions = [];
     if (!p.guest && p.id) {
-      if (p.is_you && p.joined) actions.push(el("button", { class: "linkbtn", style: "font-size:13px", onclick: () => act("active", { person: p.id, active: !p.active }).catch(say) }, p.active ? "Leave plan" : "Rejoin"));
-      else if (S.you?.is_host && !p.is_you && p.joined) actions.push(el("button", { class: "linkbtn", style: "font-size:13px", onclick: () => act("active", { person: p.id, active: !p.active }).catch(say) }, p.active ? "Mark as not taking part" : "Include again"));
+      if (p.is_you) actions.push(el("button", { class: "linkbtn", style: "font-size:13px", onclick: () => act("active", { person: p.id, active: !p.active }).catch(say) }, p.active ? "Leave plan" : "Rejoin"));
+      else if (S.you?.is_host && !p.is_you) actions.push(el("button", { class: "linkbtn", style: "font-size:13px", onclick: () => act("active", { person: p.id, active: !p.active }).catch(say) }, p.active ? "Mark as not taking part" : "Include again"));
     }
     return el("li", { class: p.active ? "" : "off" },
       el("span", { class: "av" }, (p.name[0] || "?").toUpperCase()),
@@ -657,7 +729,7 @@ $("details-form").addEventListener("submit", (e) => {
   act("details", { kind: $("kind").value, title: $("ptitle").value.trim(), place: $("place").value.trim(),
     setting: k && k[2] ? $("setting").value || null : null, month: Number($("month").value) || null,
     hemisphere: $("hemi").value || null, currency: $("currency").value, features: FEATURES.filter((f) => $(`features-${f}`).checked) })
-    .then(() => { detailsDirty = false; $("details-note").textContent = "Saved."; }).catch((err) => { $("details-note").textContent = err.message; });
+    .then(() => { detailsDirty = false; $("details-note").textContent = "Saved."; openPlanDialog(); }).catch((err) => { $("details-note").textContent = err.message; });
 });
 $("me-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -693,6 +765,8 @@ async function poll() {
     S = next;
     if (S.details) {
       renderHeader(); renderSteps(); renderStage(); renderPeople(); fillForms();
+      if ($("plan-dialog").open) renderPlanDialog();
+      else if (S.details.kind && S.details.place && S.plan_agreement.you == null && shownVersion !== S.plan_agreement.version) openPlanDialog();
     }
     S.chat.forEach(addMessage);
     seen += S.chat.length;
