@@ -60,33 +60,33 @@ class WebAppTests(unittest.TestCase):
 
     def test_full_group_plan_over_http(self):
         self.start()
-        self.new_room("Devan", "Ana", "Ben")
-        devan, ana, ben = (self.as_(n)[0] for n in ("Devan", "Ana", "Ben"))
-        self.assertEqual(devan("details", kind="trip", title="Summer trip", place="London", currency="£")[0], 200)
-        devan("preferences", vibe="chill", place="either", budget_max=800)
+        self.new_room("Alex", "Ana", "Ben")
+        alex, ana, ben = (self.as_(n)[0] for n in ("Alex", "Ana", "Ben"))
+        self.assertEqual(alex("details", kind="trip", title="Summer trip", place="London", currency="£")[0], 200)
+        alex("preferences", vibe="chill", place="either", budget_max=800)
         ana("preferences", vibe="adventurous", place="outdoor", budget_max=650)
         ben("preferences", vibe="party", place="either", budget_max=900)
         for name, cost in (("4 days in Krakow", 450), ("Porto long weekend", 520), ("Dolomites hike", 780)):
-            self.assertEqual(devan("idea", idea=name, cost_pp=cost, vibes=["chill"])[0], 200)
+            self.assertEqual(alex("idea", idea=name, cost_pp=cost, vibes=["chill"])[0], 200)
 
         # Voting is refused by the server until everyone agrees the £650 budget.
-        status, body = devan("start-vote")
+        status, body = alex("start-vote")
         self.assertEqual(status, 400)
         self.assertIn("agree the budget", body["error"])
         self.assertEqual(ana("agree", amount=700)[0], 400)          # stale amount
-        for p in (devan, ana, ben):
+        for p in (alex, ana, ben):
             self.assertEqual(p("agree", amount=650)[0], 200)
 
         view = self.as_("Ana")[1]()
         self.assertEqual(view["budget"], {"limit": 650, "all_agreed": True, "agreed": 3, "taking_part": 3, "missing": 0})
         self.assertEqual(view["over_budget"], 1)
-        self.assertEqual([p["name"] for p in view["people"]], ["Devan", "Ana", "Ben"])
+        self.assertEqual([p["name"] for p in view["people"]], ["Alex", "Ana", "Ben"])
         self.assertTrue(next(p for p in view["people"] if p["name"] == "Ana")["sets_budget"])
 
-        self.assertEqual(devan("start-vote")[0], 200)
+        self.assertEqual(alex("start-vote")[0], 200)
         finalists = [f["name"] for f in self.as_("Ben")[1]()["finalists"]]
         self.assertEqual(finalists, ["4 days in Krakow", "Porto long weekend"])
-        devan("rate", ratings={"4 days in Krakow": 4, "Porto long weekend": 2})
+        alex("rate", ratings={"4 days in Krakow": 4, "Porto long weekend": 2})
         ana("rate", ratings={"4 days in Krakow": 3, "Porto long weekend": 0})
         self.assertIsNone(self.as_("Ben")[1]()["results"])
         ben("rate", ratings={"4 days in Krakow": 2, "Porto long weekend": 4})
@@ -94,30 +94,30 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(results["winner"]["name"], "4 days in Krakow")
         self.assertEqual(results["rows"][1]["vetoed_by"], ["Ana"])
 
-        for p in (devan, ana, ben):
+        for p in (alex, ana, ben):
             self.assertEqual(p("signoff", **{"in": True})[0], 200)
-        view = self.as_("Devan")[1]()
+        view = self.as_("Alex")[1]()
         self.assertTrue(view["results"]["decided"])
         self.assertIn("Decided: 4 days in Krakow", view["chat"][-1]["text"])
 
     def test_only_the_host_can_sideline_someone(self):
         self.start()
-        self.new_room("Devan", "Ana", "Ben")
-        devan, ana, ben = (self.as_(n)[0] for n in ("Devan", "Ana", "Ben"))
-        devan("details", kind="trip", place="London")
-        for p in (devan, ana, ben):
+        self.new_room("Alex", "Ana", "Ben")
+        alex, ana, ben = (self.as_(n)[0] for n in ("Alex", "Ana", "Ben"))
+        alex("details", kind="trip", place="London")
+        for p in (alex, ana, ben):
             p("preferences", vibe="chill", place="either", budget_max=500)
-        ben_id = next(p["id"] for p in self.as_("Devan")[1]()["people"] if p["name"] == "Ben")
+        ben_id = next(p["id"] for p in self.as_("Alex")[1]()["people"] if p["name"] == "Ben")
         self.assertEqual(ana("active", person=ben_id, active=False)[0], 400)
-        self.assertEqual(devan("active", person=ben_id, active=False)[0], 200)
-        self.assertEqual(self.as_("Devan")[1]()["budget"]["taking_part"], 2)
+        self.assertEqual(alex("active", person=ben_id, active=False)[0], 200)
+        self.assertEqual(self.as_("Alex")[1]()["budget"]["taking_part"], 2)
 
     def test_strangers_and_unknown_actions(self):
         self.start()
-        self.new_room("Devan")
+        self.new_room("Alex")
         self.assertEqual(self.call(f"/api/rooms/{self.code}/messages", {"name": "Eve", "text": "hi"})[0], 400)
         self.assertEqual(self.call(f"/api/rooms/{self.code}/agree", {"name": "Eve"})[0], 400)
-        self.assertEqual(self.call(f"/api/rooms/{self.code}/explode", {"name": "Devan"})[0], 404)
+        self.assertEqual(self.call(f"/api/rooms/{self.code}/explode", {"name": "Alex"})[0], 404)
         self.assertEqual(self.call("/api/rooms/NOPE1")[0], 404)
         self.assertEqual(self.call(f"/api/rooms/{self.code}/join", {"name": "Bot"})[0], 400)
 
@@ -125,13 +125,13 @@ class WebAppTests(unittest.TestCase):
         client = FakeClient([
             ([tool("set_plan", {"kind": "trip", "title": "Summer trip", "place": "London", "currency": "£"}, "t1"),
               tool("set_preferences", {"person": "Ana", "vibe": "adventurous", "place": "outdoor", "budget_max": 650}, "t2"),
-              tool("agree_budget", {"person": "Devan"}, "t3"),          # Devan didn't write: refused
+              tool("agree_budget", {"person": "Alex"}, "t3"),          # Alex didn't write: refused
               tool("add_idea", {"name": "4 days in Krakow", "cost_per_person": 450, "vibes": ["chill"], "note": "Cheap flights"}, "t4"),
               tool("get_suggestions", {}, "t5")], "tool_use"),
             ([text("Saved! Krakow fits the budget.")], "end_turn"),
         ])
         self.start(client)
-        self.new_room("Devan", "Ana")
+        self.new_room("Alex", "Ana")
         self.as_("Ana")[0]("messages", text="Trip from London! I'm adventurous, can do £650")
         self.wait_for_bot()
 

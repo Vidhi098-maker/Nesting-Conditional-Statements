@@ -219,7 +219,7 @@
     <div class="who-card"><span class="av" id="w-av">?</span><span><strong id="w-account">Your Claude account</strong><small>You're signed in with your Claude account. No separate password needed.</small></span></div>
     <div class="already" id="w-already"></div>
     <form id="w-form">
-      <label class="f">Your name in the plan<input type="text" id="w-name" maxlength="30" autocomplete="nickname" placeholder="e.g. Devan"></label>
+      <label class="f">Your name in the plan<input type="text" id="w-name" maxlength="30" autocomplete="nickname" placeholder="e.g. Alex"></label>
       <div class="f">Ideal vibe<div class="seg" id="w-vibe"></div></div>
       <div class="f">Indoors or outdoors<div class="seg" id="w-place"></div></div>
       <label class="f">The most you can spend per person
@@ -266,8 +266,8 @@
         <div class="panel-head"><h2>What we're planning</h2><span class="muted">Anyone in the group can edit this</span></div>
         <form class="grid" id="loc-form">
           <label class="f">Kind of plan<select id="kind"></select></label>
-          <label class="f">Name it<input type="text" id="ptitle" maxlength="60" placeholder="e.g. Divahar's birthday"></label>
-          <label class="f"><span id="place-label">Town or city</span><input type="text" id="place" maxlength="60" placeholder="e.g. Hayes, London"></label>
+          <label class="f">Name it<input type="text" id="ptitle" maxlength="60" placeholder="e.g. Sam's birthday"></label>
+          <label class="f"><span id="place-label">Town or city</span><input type="text" id="place" maxlength="60" placeholder="e.g. Manchester"></label>
           <label class="f">Kind of area<select id="setting"></select></label>
           <label class="f">Month<select id="month"></select></label>
           <label class="f">Climate<select id="hemi"></select></label>
@@ -1022,7 +1022,7 @@ const BOT_RULES = `You are the planner bot in a group chat of friends planning s
 The goal is a plan everyone is happy with. The app enforces this: everyone gives the most they can spend per person, the group budget is the lowest of those, and every person must agree it themselves before voting opens. Voting is by happiness ratings, and anything someone rates "No way" is out. Finally everyone taps "I'm in".
 
 Tools (they act for the person who wrote the LAST message):
-- set_plan: what's being planned (kind, name, place, area type, nearby beach/mountains/lake, month, climate, currency). Infer what you can (e.g. "Hayes, London" = suburb, north, £). For trips, place is where people travel from.
+- set_plan: what's being planned (kind, name, place, area type, nearby beach/mountains/lake, month, climate, currency). Infer what you can (e.g. "Headingley, Leeds" = suburb, north, £). For trips, place is where people travel from.
 - set_my_preferences: the sender's vibe, indoor/outdoor preference and the most they can spend per person (a number in the plan's currency).
 - agree_budget: ONLY when the sender clearly says they accept the current group budget. Never agree for anyone else.
 - add_friend: preferences for someone mentioned who isn't using the app.
@@ -1036,7 +1036,7 @@ Rules: costs you add are estimates; say so and suggest checking current prices. 
 const BOT_TOOLS = [
   { name: "set_plan", description: "Save or change what's being planned. Send only fields you know; others are kept. Returns the saved plan.",
     inputSchema: { type: "object", properties: {
-      kind: { type: "string", enum: Object.keys(KINDS) }, title: { type: "string", description: "Short name, e.g. \"Divahar's birthday\"" },
+      kind: { type: "string", enum: Object.keys(KINDS) }, title: { type: "string", description: "Short name, e.g. \"Sam's birthday\"" },
       place: { type: "string", description: "Town or city; for trips, where people travel from" }, setting: { type: "string", enum: SETTINGS },
       features: { type: "array", items: { type: "string", enum: FEATURES } }, hemisphere: { type: "string", enum: Object.keys(HEMIS) },
       month: { type: "integer", minimum: 1, maximum: 12 }, currency: { type: "string", enum: Object.keys(CURRENCIES) } } },

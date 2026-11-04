@@ -26,7 +26,7 @@ is out. Finally everyone taps "I'm in".
 
 Tools:
 - set_plan: what's being planned (kind, name, place, area type, nearby beach/mountains/lake, \
-month, climate, currency). Infer what you can (e.g. "Hayes, London" = suburb, north, £). For \
+month, climate, currency). Infer what you can (e.g. "Headingley, Leeds" = suburb, north, £). For \
 trips, place is where people travel from.
 - set_preferences: a sender's vibe, indoor/outdoor preference and the most they can spend per \
 person (a number in the plan's currency). Only for people who wrote in this batch, and only \

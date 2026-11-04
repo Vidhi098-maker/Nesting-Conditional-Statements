@@ -33,14 +33,14 @@ def add_trips(plan):
 
 class BudgetTests(unittest.TestCase):
     def setUp(self):
-        self.plan, self.ids = plan_with({"Devan": ("chill", "either", 800), "Ana": ("adventurous", "outdoor", 650),
+        self.plan, self.ids = plan_with({"Alex": ("chill", "either", 800), "Ana": ("adventurous", "outdoor", 650),
                                          "Ben": ("party", "either", 900)})
 
     def test_group_budget_is_the_lowest(self):
         self.assertEqual(self.plan.budget()["limit"], 650)
 
     def test_agreement_is_for_an_exact_amount(self):
-        self.plan.agree_budget(self.ids["Devan"], 650)
+        self.plan.agree_budget(self.ids["Alex"], 650)
         with self.assertRaisesRegex(PlanError, "just changed"):
             self.plan.agree_budget(self.ids["Ana"], 700)
         self.plan.agree_budget(self.ids["Ana"])
@@ -68,7 +68,7 @@ class BudgetTests(unittest.TestCase):
 
 class VotingTests(unittest.TestCase):
     def setUp(self):
-        self.plan, self.ids = plan_with({"Devan": ("chill", "either", 800), "Ana": ("adventurous", "outdoor", 650),
+        self.plan, self.ids = plan_with({"Alex": ("chill", "either", 800), "Ana": ("adventurous", "outdoor", 650),
                                          "Ben": ("party", "either", 900)})
         add_trips(self.plan)
 
@@ -78,60 +78,60 @@ class VotingTests(unittest.TestCase):
 
     def test_vote_needs_everyone_to_agree(self):
         with self.assertRaisesRegex(PlanError, "agree the budget"):
-            self.plan.start_vote(self.ids["Devan"])
+            self.plan.start_vote(self.ids["Alex"])
         self.agree_all()
-        self.plan.start_vote(self.ids["Devan"])
+        self.plan.start_vote(self.ids["Alex"])
         self.assertEqual(self.plan.current_phase(), "voting")
         names = [f["name"] for f in self.plan.finalists()]
         self.assertNotIn("Hiking in the Dolomites", names)  # over the £650 budget
         self.assertEqual(len(names), 4)
 
     def test_host_can_move_past_a_quiet_member(self):
-        self.plan.agree_budget(self.ids["Devan"])
+        self.plan.agree_budget(self.ids["Alex"])
         self.plan.agree_budget(self.ids["Ana"])
         ben = self.plan.token(self.ids["Ben"])
         with self.assertRaisesRegex(PlanError, "Only the host"):
             self.plan.set_active(self.ids["Ana"], ben, False)
-        self.plan.set_active(self.ids["Devan"], ben, False)   # Devan joined first, so is host
-        self.plan.start_vote(self.ids["Devan"])
+        self.plan.set_active(self.ids["Alex"], ben, False)   # Alex joined first, so is host
+        self.plan.start_vote(self.ids["Alex"])
         # Ben can leave and rejoin himself.
         self.plan.set_active(self.ids["Ben"], ben, True)
         self.assertEqual(self.plan.current_phase(), "planning")  # paused until Ben agrees
 
     def test_budget_drop_pauses_the_vote_and_drops_finalists(self):
         self.agree_all()
-        self.plan.start_vote(self.ids["Devan"])
+        self.plan.start_vote(self.ids["Alex"])
         self.plan.set_preferences(self.ids["Ben"], "party", "either", 500)
         self.assertEqual(self.plan.current_phase(), "planning")
         with self.assertRaisesRegex(PlanError, "Voting isn't open"):
-            self.plan.rate(self.ids["Devan"], {})
+            self.plan.rate(self.ids["Alex"], {})
         self.agree_all()
         self.assertEqual(self.plan.current_phase(), "voting")
         self.assertEqual([f["name"] for f in self.plan.finalists()], ["4 days in Krakow", "Budapest baths"])
 
     def test_ratings_are_validated(self):
         self.agree_all()
-        self.plan.start_vote(self.ids["Devan"])
+        self.plan.start_vote(self.ids["Alex"])
         names = [f["name"] for f in self.plan.finalists()]
         with self.assertRaisesRegex(PlanError, "every option"):
-            self.plan.rate(self.ids["Devan"], {names[0]: 3})
+            self.plan.rate(self.ids["Alex"], {names[0]: 3})
         with self.assertRaisesRegex(PlanError, "0 \\(No way\\) to 4"):
-            self.plan.rate(self.ids["Devan"], {n: 5 for n in names})
+            self.plan.rate(self.ids["Alex"], {n: 5 for n in names})
 
     def test_full_vote_and_sign_off(self):
         self.agree_all()
-        self.plan.start_vote(self.ids["Devan"])
+        self.plan.start_vote(self.ids["Alex"])
         names = [f["name"] for f in self.plan.finalists()]
         self.assertEqual(names, ["4 days in Krakow", "Lisbon and Sintra", "Budapest baths", "Porto long weekend"])
         with self.assertRaisesRegex(PlanError, "nothing to sign off"):
-            self.plan.sign_off(self.ids["Devan"], True)
-        for who, scores in (("Devan", [4, 3, 2, 3]), ("Ana", [2, 4, 0, 3]), ("Ben", [3, 2, 4, 2])):
+            self.plan.sign_off(self.ids["Alex"], True)
+        for who, scores in (("Alex", [4, 3, 2, 3]), ("Ana", [2, 4, 0, 3]), ("Ben", [3, 2, 4, 2])):
             self.plan.rate(self.ids[who], dict(zip(names, scores)))
         rows, winner, decided = self.plan.result()
         self.assertEqual(winner["name"], "4 days in Krakow")
         self.assertEqual(rows[-1]["name"], "Budapest baths")   # Ana's "No way" rules it out
         self.assertFalse(decided)
-        self.plan.sign_off(self.ids["Devan"], True)
+        self.plan.sign_off(self.ids["Alex"], True)
         self.plan.sign_off(self.ids["Ana"], False)
         self.assertFalse(self.plan.result()[2])
         self.plan.sign_off(self.ids["Ana"], True)
