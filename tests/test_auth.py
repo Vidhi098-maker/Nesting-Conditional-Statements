@@ -208,7 +208,10 @@ class SignInTests(unittest.TestCase):
         self.assertEqual(self.browser.request(f"/api/rooms/{code}/join", {"name": "Somebody Else"})[0], 200)
         state = self.browser.request(f"/api/rooms/{code}")[2]
         self.assertEqual(state["members"], ["Ana Silva"])
-        self.assertEqual(state["you"], {"id": "google:1234567890", "name": "Ana Silva"})
+        self.assertEqual(state["you"]["name"], "Ana Silva")
+        self.assertTrue(state["you"]["is_host"])
+        # Other people in the room see a random per-room id, never the Google account id.
+        self.assertNotIn("1234567890", json.dumps(state))
 
         # Signing out ends the session.
         self.assertEqual(self.browser.request("/auth/logout", {}, headers={"Origin": self.base})[0], 200)

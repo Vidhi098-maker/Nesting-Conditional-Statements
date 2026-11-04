@@ -3,134 +3,203 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Birthday Planner</title>
+<title>Group Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap">
 <style>
+  /* Layout: a lobby to sign in and start or join a plan; then a planning board with progress steps on top,
+     the current stage leading the main column and the group chat beside it (tabs on phones). */
   :root {
-    --bg: #fbf7f4; --surface: #ffffff; --surface-2: #f3ece6; --text: #2a2220;
-    --muted: #7a6c66; --border: #e7ddd5; --accent: #d9485f; --accent-text: #ffffff;
-    --bot: #fff1e8; --me: #d9485f; --me-text: #ffffff; --gold: #e3a21a;
+    --bg: #f5f4fa; --surface: #ffffff; --surface-2: #eceaf5; --line: #dedbea;
+    --ink: #1d1830; --muted: #6a6480; --accent: #f0532e; --accent-ink: #ffffff;
+    --bot: #ece7ff; --bot-ink: #3b2a8f; --good: #1f8a5b; --good-soft: #dff3e9; --bad: #c2334a; --bad-soft: #fbe3e7;
+    --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+    --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --r: 14px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #1b1716; --surface: #262120; --surface-2: #312a28; --text: #f3ebe7;
-      --muted: #a8988f; --border: #3d3532; --accent: #f06a7e; --accent-text: #1b1716;
-      --bot: #34292a; --me: #f06a7e; --me-text: #1b1716; --gold: #f0b93c;
+      --bg: #15121f; --surface: #1f1b2c; --surface-2: #2a2539; --line: #363049;
+      --ink: #f1eef9; --muted: #a59fba; --accent: #ff7552; --accent-ink: #1a0f0a;
+      --bot: #2c2450; --bot-ink: #d9d0ff; --good: #4cc48d; --good-soft: #17352a; --bad: #ff7b8f; --bad-soft: #3d1c25; color-scheme: dark;
     }
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; }
+  html, body { margin: 0; min-height: 100%; }
   body {
-    background: var(--bg); color: var(--text);
-    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
-  button, input { font: inherit; color: inherit; }
-  button {
-    border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer;
-    background: var(--accent); color: var(--accent-text); font-weight: 600;
-  }
-  button.ghost { background: var(--surface-2); color: var(--text); }
-  button:disabled { opacity: .5; cursor: default; }
-  input {
-    width: 100%; padding: 12px 14px; border-radius: 12px;
-    border: 1px solid var(--border); background: var(--surface);
-  }
-  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .hidden { display: none !important; }
+  h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .hidden, [hidden] { display: none !important; }
   .muted { color: var(--muted); }
-  .error { color: var(--accent); min-height: 1.4em; margin: 8px 0 0; font-size: 14px; }
+  .error { color: var(--bad); min-height: 1.4em; margin: 0; font-size: 14px; }
 
-  /* Welcome screen */
-  #welcome { max-width: 420px; margin: 0 auto; padding: 48px 16px; }
-  #welcome h1 { font-size: 32px; margin: 0 0 4px; }
-  #welcome .card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
-    padding: 20px; margin-top: 24px; display: grid; gap: 12px;
-  }
+  .btn { border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 600; background: var(--accent); color: var(--accent-ink); }
+  .btn.ghost { background: var(--surface-2); color: var(--ink); }
+  .btn.good { background: var(--good); color: var(--accent-ink); }
+  .btn.small { padding: 6px 12px; font-size: 13px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .linkbtn { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 0; }
+  .linkbtn:disabled { opacity: .45; cursor: default; }
+  input[type=text], input[type=number], select { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-size: 15px; }
+
+  /* Lobby */
+  .lobby { max-width: 460px; margin: 0 auto; padding-block: 8vh 32px; display: grid; gap: 18px; }
+  .lobby h1 { font-size: clamp(34px, 8vw, 46px); font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+  .lobby h1 span { color: var(--accent); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px; display: grid; gap: 12px; }
   .row { display: flex; gap: 8px; }
-  .provider {
-    display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none;
-    border-radius: 12px; padding: 12px 16px; font-weight: 600; border: 1px solid var(--border);
-  }
+  .row > input { flex: 1; min-width: 0; }
+  .or { text-align: center; color: var(--muted); font-size: 13px; }
+  .provider { display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; border-radius: 12px; padding: 12px 16px; font-weight: 600; border: 1px solid var(--line); }
   .provider svg { width: 18px; height: 18px; flex: none; }
   .provider.google { background: #ffffff; color: #1f1f1f; border-color: #dadce0; }
   .provider.apple { background: #000000; color: #ffffff; border-color: #000000; }
-  .provider:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .signed-in { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 15px; }
-  .linkish { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; cursor: pointer; }
-  .row > input { flex: 1; }
+  .signed-in { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 
-  /* Room screen */
-  #room { height: 100%; display: flex; flex-direction: column; }
-  header {
-    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
-    border-bottom: 1px solid var(--border); background: var(--surface);
-  }
-  header h2 { font-size: 17px; margin: 0; flex: 1; min-width: 0; }
-  header .code { font-family: ui-monospace, monospace; letter-spacing: 2px; }
-  header button { padding: 8px 12px; font-size: 14px; }
+  /* Room */
+  .wrap { max-width: 1180px; margin: 0 auto; padding-block: 18px 32px; display: grid; gap: 16px; }
+  header.top { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 16px; }
+  header.top h1 { font-size: clamp(26px, 5vw, 40px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; flex: 1 1 auto; min-width: 0; }
+  header.top h1 span { color: var(--accent); }
+  .room-tools { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .code { font-family: ui-monospace, monospace; letter-spacing: 2px; font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+  .chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  .chip.on { background: var(--ink); color: var(--bg); }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .step { padding: 8px 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; display: grid; gap: 1px; min-width: 0; }
+  .step b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .step.done { background: var(--good-soft); border-color: transparent; }
+  .step.done b::before { content: "✓ "; color: var(--good); }
+  .step.now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
   .tabs { display: none; }
-  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
-  section { min-height: 0; display: flex; flex-direction: column; }
-  #chat-panel { border-right: 1px solid var(--border); }
+  .board { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .col { display: grid; gap: 18px; min-width: 0; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; min-width: 0; }
+  .panel h2 { font-size: 20px; font-weight: 800; }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 
-  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { max-width: 85%; padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .msg .who { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
-  .msg.bot { background: var(--bot); align-self: flex-start; border-bottom-left-radius: 4px; }
-  .msg.other { background: var(--surface); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 4px; }
-  .msg.me { background: var(--me); color: var(--me-text); align-self: flex-end; border-bottom-right-radius: 4px; }
-  .msg.me .who { color: inherit; opacity: .8; }
-  .msg.app { align-self: center; background: none; color: var(--muted); font-size: 13px; padding: 0; }
-  .typing { color: var(--muted); font-size: 14px; padding: 0 16px 8px; }
-  #composer { display: flex; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--surface); }
-  #composer input { flex: 1; }
+  form.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  form.grid .full { grid-column: 1 / -1; }
+  .f { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .money { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  .money span { padding-left: 11px; color: var(--muted); font-weight: 600; }
+  .money input { border: 0 !important; background: none !important; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; color: var(--ink); cursor: pointer; font-weight: 500; }
+  .seg input:checked + label { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .form-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .note { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+  details.add { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
+  details.add summary { cursor: pointer; font-weight: 600; color: var(--accent); }
 
-  #side { overflow-y: auto; padding: 16px; }
-  #side h3 { margin: 0 0 4px; font-size: 18px; }
-  .idea {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    padding: 12px 14px; margin-top: 10px; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
-  }
-  .idea .num {
-    width: 36px; height: 28px; border-radius: 14px; background: var(--surface-2);
-    display: grid; place-items: center; font-weight: 700; font-size: 14px; grid-row: span 3;
-  }
-  .idea .name { font-weight: 600; }
-  .idea .why { font-size: 14px; color: var(--muted); }
-  .venues { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
-  .venues a { color: var(--accent); font-weight: 600; text-decoration: none; }
-  .venues a:hover { text-decoration: underline; }
-  .idea.pickable { cursor: pointer; user-select: none; }
-  .idea.pickable:hover { border-color: var(--accent); }
-  .idea.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .idea.picked .num { background: var(--accent); color: var(--accent-text); }
-  .vote-bar { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 4px; display: grid; gap: 8px; }
-  .result { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin-top: 10px; }
-  .bar { grid-column: span 2; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
-  .bar > div { height: 100%; background: var(--accent); }
-  .winner { background: var(--surface); border: 2px solid var(--gold); border-radius: 18px; padding: 16px; text-align: center; margin-top: 12px; }
-  .winner .big { font-size: 22px; font-weight: 700; margin-top: 4px; }
-  .empty { margin-top: 24px; text-align: center; color: var(--muted); }
+  .budget { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 18px; align-items: center; padding: 14px 16px; border-radius: var(--r); background: var(--bg); margin-top: 10px; }
+  .budget .amount { font: 800 30px/1 var(--display); font-variant-numeric: tabular-nums; grid-row: span 2; }
+  .budget .amount small { font: 500 13px var(--body); color: var(--muted); display: block; margin-top: 4px; }
+  .budget .actions { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .agree { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 12.5px; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  .tag.yes { background: var(--good-soft); color: var(--good); font-weight: 600; }
+  .tag.no { background: var(--bad-soft); color: var(--bad); font-weight: 600; }
+  .paused { display: block; margin: 12px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-weight: 600; font-size: 13.5px; }
 
-  @media (max-width: 760px) {
-    main { grid-template-columns: 1fr; }
-    #chat-panel { border-right: 0; }
-    .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); }
-    .tabs button {
-      flex: 1; background: none; color: var(--muted); border-radius: 0; padding: 10px;
-      border-bottom: 2px solid transparent;
-    }
-    .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
-    main[data-tab="chat"] #side-panel, main[data-tab="ideas"] #chat-panel { display: none; }
-    .badge { display: inline-block; min-width: 8px; height: 8px; border-radius: 4px; background: var(--accent); margin-left: 6px; vertical-align: middle; }
+  .ideas { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+  .idea { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 2px 12px; align-items: start; padding: 12px 14px; border-radius: var(--r); background: var(--bg); }
+  .rank { grid-row: span 3; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font: 800 15px var(--display); background: var(--surface-2); font-variant-numeric: tabular-nums; }
+  .idea:first-child .rank { background: var(--accent); color: var(--accent-ink); }
+  .idea .name { font-weight: 600; font-size: 16px; }
+  .idea .why { font-size: 13.5px; color: var(--muted); grid-column: 2; }
+  .idea .meta { grid-column: 2; display: flex; gap: 6px 12px; flex-wrap: wrap; font-size: 13px; margin-top: 2px; color: var(--muted); }
+  .idea .meta a, .winner a, .decided a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .winner a { color: inherit; text-decoration: underline; }
+  .cost { font-variant-numeric: tabular-nums; text-align: right; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .thumbs { grid-column: 3; grid-row: 2 / span 2; display: flex; gap: 4px; align-self: end; }
+  .thumb { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; width: 34px; height: 32px; font-size: 15px; display: grid; place-items: center; padding: 0; }
+  .thumb[aria-pressed=true].up { background: var(--good); border-color: var(--good); }
+  .thumb[aria-pressed=true].down { background: var(--bad); border-color: var(--bad); }
+  .empty { padding: 24px 8px; text-align: center; color: var(--muted); display: grid; gap: 10px; justify-items: center; }
+  .empty strong { color: var(--ink); font-family: var(--display); font-size: 18px; }
+  .vote-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .blocker { font-size: 13px; color: var(--muted); }
+
+  .rate { display: grid; gap: 8px; padding: 12px 14px; border-radius: var(--r); background: var(--bg); }
+  .rate .name { font-weight: 600; }
+  .faces { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .face { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 6px 2px; display: grid; justify-items: center; gap: 1px; font-size: 20px; line-height: 1.2; }
+  .face small { font-size: 11.5px; color: var(--muted); }
+  .face[aria-pressed=true] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .face[aria-pressed=true].veto { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
+
+  .winner { padding: 18px; border-radius: var(--r); background: var(--ink); color: var(--bg); display: grid; gap: 4px; }
+  .winner .label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+  .winner .big, .decided .big { font: 800 clamp(22px, 4vw, 30px)/1.15 var(--display); }
+  .decided { padding: 22px; border-radius: var(--r); background: var(--good-soft); display: grid; gap: 6px; }
+  .table-wrap { overflow-x: auto; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td:first-child { white-space: normal; }
+  tr.out td { color: var(--muted); }
+  .signoff { display: grid; gap: 10px; margin-top: 14px; padding: 14px 16px; border-radius: var(--r); background: var(--bg); }
+
+  .roster { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+  .roster li { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--bg); }
+  .roster li.off { opacity: .6; }
+  .roster .av { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--surface-2); grid-row: span 2; }
+  .roster .who { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .roster .who small { font-weight: 400; color: var(--muted); }
+  .roster .prefs { font-size: 13px; color: var(--muted); grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+  .roster .spend { grid-column: 3; grid-row: 1 / span 2; text-align: right; font: 800 20px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+  .roster .spend small { display: block; font: 500 11.5px var(--body); color: var(--muted); }
+  .roster .spend.none { font: 500 13px var(--body); color: var(--muted); }
+  .roster-foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; }
+
+  .chat { display: flex; flex-direction: column; height: min(78vh, 760px); padding: 0; overflow: hidden; position: sticky; top: 12px; }
+  .chat .panel-head { padding: 16px 18px 10px; border-bottom: 1px solid var(--line); margin: 0; }
+  .msgs { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .msg { max-width: 88%; display: grid; gap: 2px; }
+  .msg .who { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .msg .body { padding: 9px 13px; border-radius: 14px; background: var(--bg); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.mine { align-self: flex-end; }
+  .msg.mine .who { text-align: right; }
+  .msg.mine .body { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+  .msg.bot .body { background: var(--bot); color: var(--bot-ink); border-bottom-left-radius: 4px; }
+  .msg.app { align-self: center; color: var(--muted); font-size: 13px; text-align: center; }
+  .typing { font-size: 13px; color: var(--muted); padding: 0 16px 8px; font-style: italic; }
+  .composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
+  .composer input { flex: 1; min-width: 0; border-radius: 12px !important; }
+
+  @media (max-width: 860px) {
+    .tabs { display: flex; gap: 6px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 6px; }
+    .tabs button { flex: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 9px; font-weight: 600; color: var(--muted); }
+    .tabs button[aria-selected=true] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .badge { display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: var(--accent); margin-left: 6px; vertical-align: middle; }
+    .board { grid-template-columns: minmax(0, 1fr); }
+    .board[data-tab=plan] .chat-col, .board[data-tab=chat] .plan-col { display: none; }
+    .chat { position: static; height: calc(100vh - 240px); min-height: 420px; }
+    form.grid { grid-template-columns: minmax(0, 1fr); }
   }
+  @media (max-width: 480px) { .step span { display: none; } .step b { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; font-size: 11px; line-height: 1.25; } .face small { display: none; } }
 </style>
 </head>
 <body>
 
-<div id="welcome">
-  <h1>🎂 Birthday Planner</h1>
-  <p class="muted">Plan the perfect birthday with friends. Chat with the planner bot, get 10 ideas tailored to where they live, see real local spots, then vote together.</p>
+<main class="lobby" id="lobby">
+  <div>
+    <h1>Group <span>Planner</span></h1>
+    <p class="muted">Plan anything with friends: a birthday, a dinner, a night out, a trip. Agree a budget together, get ideas ranked for the whole group, and vote so nobody ends up somewhere they hate.</p>
+  </div>
   <div class="card">
     <div id="signin" class="hidden" style="display:grid;gap:10px">
       <strong>Sign in to start or join a plan</strong>
@@ -139,281 +208,489 @@
     </div>
     <div id="signed-in" class="signed-in hidden">
       <span>Signed in as <strong id="me-name"></strong></span>
-      <button class="linkish" id="logout" type="button">Sign out</button>
+      <button class="linkbtn" id="logout" type="button">Sign out</button>
     </div>
-    <div id="name-row" style="display:grid;gap:12px">
-      <label for="name">Your name</label>
-      <input id="name" maxlength="30" autocomplete="given-name" placeholder="e.g. Ana">
-    </div>
+    <label class="f" id="name-row">Your name<input type="text" id="name" maxlength="30" autocomplete="given-name" placeholder="e.g. Ana"></label>
     <div id="plan-actions" style="display:grid;gap:12px">
-    <button id="create">Start a new plan</button>
-    <div class="muted" style="text-align:center">or join one</div>
-    <div class="row">
-      <input id="code" maxlength="5" placeholder="Room code" autocapitalize="characters">
-      <button id="join" class="ghost">Join</button>
+      <button class="btn" id="create">Start a new plan</button>
+      <div class="or">or join one with its code</div>
+      <div class="row">
+        <input type="text" id="code" maxlength="5" placeholder="Room code" autocapitalize="characters" aria-label="Room code">
+        <button class="btn ghost" id="join">Join</button>
+      </div>
     </div>
-    </div>
-    <p class="error" id="welcome-error"></p>
+    <p class="error" id="lobby-error"></p>
   </div>
-</div>
+</main>
 
-<div id="room" class="hidden">
-  <header>
-    <h2>Room <span class="code" id="room-code"></span> <span class="muted" id="members" style="font-weight:400;font-size:14px"></span></h2>
-    <button class="ghost" id="share">Invite</button>
+<div class="wrap hidden" id="room">
+  <header class="top">
+    <h1 id="title">Group <span>Planner</span></h1>
+    <div class="room-tools">
+      <span class="muted">Room <span class="code" id="room-code"></span></span>
+      <button class="btn ghost small" id="share">Invite</button>
+    </div>
+    <div class="chips" id="summary"></div>
   </header>
-  <div class="tabs">
-    <button data-tab="chat" class="active">Chat</button>
-    <button data-tab="ideas" id="ideas-tab">Ideas</button>
+
+  <ol class="steps" id="steps" aria-label="Progress"></ol>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-plan" aria-selected="true">Plan</button>
+    <button role="tab" id="tab-chat" aria-selected="false">Group chat</button>
   </div>
-  <main data-tab="chat">
-    <section id="chat-panel">
-      <div id="messages" aria-live="polite"></div>
-      <div class="typing hidden" id="typing">Planner bot is thinking…</div>
-      <form id="composer">
-        <input id="text" maxlength="1000" placeholder="Message the group and the bot" autocomplete="off">
-        <button type="submit">Send</button>
-      </form>
-    </section>
-    <section id="side-panel">
-      <div id="side"></div>
-    </section>
-  </main>
+
+  <div class="board" id="board" data-tab="plan">
+    <div class="col plan-col">
+      <section class="panel" id="stage" aria-live="polite"></section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Who's in the plan</h2><span class="muted" id="people-count"></span></div>
+        <ul class="roster" id="people"></ul>
+        <div class="roster-foot" id="people-foot" hidden></div>
+        <form class="grid" id="me-form">
+          <div class="full"><strong>Your preferences</strong> <span class="muted">· these shape the ranking and the budget</span></div>
+          <div class="full f">Ideal vibe<div class="seg" id="me-vibe"></div></div>
+          <div class="f">Indoors or outdoors<div class="seg" id="me-place"></div></div>
+          <label class="f">The most you can spend per person
+            <span class="money"><span class="cur"></span><input type="number" id="me-budget" min="1" step="1" inputmode="numeric" placeholder="e.g. 50"></span>
+          </label>
+          <div class="full form-actions">
+            <button class="btn" type="submit" id="me-save">Save my preferences</button>
+            <span class="note" id="me-note"></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>What we're planning</h2><span class="muted">Anyone in the group can edit this</span></div>
+        <form class="grid" id="details-form">
+          <label class="f">Kind of plan<select id="kind"></select></label>
+          <label class="f">Name it<input type="text" id="ptitle" maxlength="60" placeholder="e.g. Divahar's birthday"></label>
+          <label class="f"><span id="place-label">Town or city</span><input type="text" id="place" maxlength="60" placeholder="e.g. Hayes, London"></label>
+          <label class="f local">Kind of area<select id="setting"></select></label>
+          <label class="f">Month<select id="month"></select></label>
+          <label class="f local">Climate<select id="hemi"></select></label>
+          <label class="f">Currency<select id="currency"></select></label>
+          <div class="f local">Nearby<div class="seg" id="features"></div></div>
+          <div class="full form-actions">
+            <button class="btn" type="submit">Save plan details</button>
+            <span class="note" id="details-note"></span>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="col chat-col">
+      <section class="panel chat">
+        <div class="panel-head"><h2>Group chat</h2><span class="muted">with the planner bot</span></div>
+        <div class="msgs" id="msgs" aria-live="polite"></div>
+        <div class="typing" id="typing" hidden>Planner bot is thinking…</div>
+        <form class="composer" id="composer">
+          <input type="text" id="text" maxlength="1000" autocomplete="off" placeholder="Tell the bot what you'd like…" aria-label="Message">
+          <button class="btn" type="submit">Send</button>
+        </form>
+      </section>
+    </div>
+  </div>
 </div>
 
 <script>
-const $ = (sel) => document.querySelector(sel);
+const KINDS = { birthday: ["Birthday", "Town or city", true], outing: ["Day or night out", "Town or city", true], dinner: ["Dinner or meal", "Town or city", true],
+  trip: ["Trip or holiday", "Travelling from", false], other: ["Something else", "Where", false] };
+const VIBES = ["chill", "adventurous", "fancy", "party", "creative"];
+const SETTINGS = ["city", "suburb", "town", "rural"];
+const FEATURES = ["beach", "mountains", "lake"];
+const HEMIS = { north: "North of the tropics", south: "South of the tropics", tropical: "Tropical" };
+const PLACES = { indoor: "Indoors", outdoor: "Outdoors", either: "Either" };
+const CURRENCIES = { "£": "£ Pound", "€": "€ Euro", "$": "$ Dollar", "₹": "₹ Rupee" };
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const FACES = [["😣", "No way"], ["😕", "Meh"], ["🙂", "OK"], ["😀", "Good"], ["😍", "Love it"]];
+const ICONS = {
+  google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-5 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>',
+  apple: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.7c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.77-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.82-.81-3-.79-1.54.02-2.96.9-3.76 2.27-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.23-.02 2.01-1.12 2.77-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.38-3.68zM14.1 5.95c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.66 1.37-.58.68-1.09 1.76-.96 2.8 1.02.08 2.05-.52 2.68-1.28z"/></svg>',
+};
+
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === false || v == null) continue;
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
+  return n;
+}
+const put = (box, ...kids) => box.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
 };
 
-let me = store.get("bp-name") || "";
-let account = { user: null, providers: [] };   // from /auth/me
-const myId = () => account.user ? account.user.id : `name:${me}`;
-const PROVIDER_ICONS = {
-  google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-5 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>',
-  apple: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.7c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.77-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.82-.81-3-.79-1.54.02-2.96.9-3.76 2.27-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.23-.02 2.01-1.12 2.77-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.38-3.68zM14.1 5.95c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.66 1.37-.58.68-1.09 1.76-.96 2.8 1.02.08 2.05-.52 2.68-1.28z"/></svg>',
-};
+let account = { user: null, providers: [] };
+let myName = store.get("gp-name") || "";
+let code = (new URLSearchParams(location.search).get("room") || "").toUpperCase();
+let S = null, seen = 0, myRatings = {}, ratingRound = -1, pollTimer = null, pollError = "";
+const nameMode = () => account.providers.length === 0;
 
+async function api(path, body) {
+  const extra = nameMode() ? { name: myName } : {};
+  const res = await fetch(path, body === undefined ? { cache: "no-store" } : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...extra, ...body }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.error || "Something went wrong."); e.status = res.status; throw e; }
+  return data;
+}
+const act = (action, body = {}) => api(`/api/rooms/${code}/${action}`, body).then(() => poll());
+function money(x) { return x == null ? "–" : `${S?.details?.currency || "£"}${Math.round(x).toLocaleString()}`; }
+
+/* ---------- Lobby ---------- */
 async function loadAccount() {
   try { account = await (await fetch("/auth/me", { cache: "no-store" })).json(); } catch {}
-  const signInOn = account.providers.length > 0;
-  $("#signin").classList.toggle("hidden", !signInOn || !!account.user);
-  $("#signed-in").classList.toggle("hidden", !account.user);
-  $("#name-row").classList.toggle("hidden", signInOn);
-  $("#plan-actions").classList.toggle("hidden", signInOn && !account.user);
-  if (account.user) { me = account.user.name; $("#me-name").textContent = me; }
-  const next = encodeURIComponent(location.pathname + location.search.replace(/[?&]login_error=[^&]*/, ""));
-  $("#providers").replaceChildren(...account.providers.map((p) => {
+  const signIn = account.providers.length > 0;
+  $("signin").classList.toggle("hidden", !signIn || !!account.user);
+  $("signed-in").classList.toggle("hidden", !account.user);
+  $("name-row").classList.toggle("hidden", signIn);
+  $("plan-actions").classList.toggle("hidden", signIn && !account.user);
+  if (account.user) { myName = account.user.name; $("me-name").textContent = myName; }
+  $("name").value = myName; $("code").value = code;
+  const next = encodeURIComponent(location.pathname + (code ? `?room=${code}` : ""));
+  $("providers").replaceChildren(...account.providers.map((p) => {
     const a = el("a", { class: `provider ${p.name}`, href: `/auth/login/${encodeURIComponent(p.name)}?next=${next}` });
-    a.innerHTML = PROVIDER_ICONS[p.name] || "";
+    a.innerHTML = ICONS[p.name] || "";
     a.append(`Continue with ${p.label}`);
     return a;
   }));
-  const loginError = new URLSearchParams(location.search).get("login_error");
-  if (loginError) {
-    $("#welcome-error").textContent = loginError;
-    history.replaceState(null, "", location.pathname + (code ? `?room=${code}` : ""));
-  }
+  const err = new URLSearchParams(location.search).get("login_error");
+  if (err) { $("lobby-error").textContent = err; history.replaceState(null, "", location.pathname + (code ? `?room=${code}` : "")); }
 }
-
-$("#logout").onclick = async () => {
-  try { await api("/auth/logout", {}); } catch {}
-  location.reload();
-};
-let code = new URLSearchParams(location.search).get("room") || "";
-let seen = 0;
-let state = null;
-let picks = [];
-let sideKey = "";
-
-$("#name").value = me;
-$("#code").value = code.toUpperCase();
-
-async function api(path, body) {
-  const res = await fetch(path, body === undefined ? {} : {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Something went wrong.");
-  return data;
-}
-
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === "class") node.className = v; else if (k.startsWith("on")) node.addEventListener(k.slice(2), v); else node.setAttribute(k, v);
-  }
-  for (const child of children) if (child != null) node.append(child);
-  return node;
-}
-
 function readName() {
-  if (account.user) return account.user.name;
-  if (account.providers.length) throw new Error("Please sign in first.");
-  const name = $("#name").value.trim();
-  if (!name) throw new Error("Please enter your name first.");
-  me = name; store.set("bp-name", name);
-  return name;
+  if (!nameMode()) { if (!account.user) throw new Error("Please sign in first."); return; }
+  myName = $("name").value.trim();
+  if (!myName) throw new Error("Please enter your name first.");
+  store.set("gp-name", myName);
 }
-
 async function enter(roomCode) {
-  const name = readName();
-  await api(`/api/rooms/${roomCode}/join`, { name });
-  code = roomCode.toUpperCase();
+  readName();
+  code = roomCode.trim().toUpperCase();
+  await api(`/api/rooms/${code}/join`, {});
   history.replaceState(null, "", `?room=${code}`);
-  $("#welcome").classList.add("hidden");
-  $("#room").classList.remove("hidden");
-  $("#room-code").textContent = code;
+  $("lobby").classList.add("hidden"); $("room").classList.remove("hidden");
+  $("room-code").textContent = code;
   poll();
 }
-
-$("#create").onclick = async () => {
-  try { readName(); const { code } = await api("/api/rooms", {}); await enter(code); }
-  catch (e) { $("#welcome-error").textContent = e.message; }
+$("create").onclick = async () => {
+  try { readName(); const r = await api("/api/rooms", {}); await enter(r.code); } catch (e) { $("lobby-error").textContent = e.message; }
 };
-$("#join").onclick = async () => {
-  try { await enter($("#code").value.trim()); }
-  catch (e) { $("#welcome-error").textContent = e.message; }
-};
-
-$("#share").onclick = async () => {
+$("join").onclick = async () => { try { await enter($("code").value); } catch (e) { $("lobby-error").textContent = e.message; } };
+$("logout").onclick = async () => { try { await api("/auth/logout", {}); } catch {} location.reload(); };
+$("share").onclick = async () => {
   const url = `${location.origin}${location.pathname}?room=${code}`;
   try {
-    if (navigator.share) await navigator.share({ title: "Help plan a birthday!", url });
-    else { await navigator.clipboard.writeText(url); $("#share").textContent = "Link copied!"; setTimeout(() => $("#share").textContent = "Invite", 1500); }
+    if (navigator.share) await navigator.share({ title: "Join our plan", url });
+    else { await navigator.clipboard.writeText(url); $("share").textContent = "Link copied!"; setTimeout(() => ($("share").textContent = "Invite"), 1500); }
   } catch {}
 };
 
-document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
-  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
-  $("main").dataset.tab = b.dataset.tab;
-  if (b.dataset.tab === "ideas") $("#ideas-tab").querySelector(".badge")?.remove();
-});
+/* ---------- Rendering ---------- */
+function renderHeader() {
+  const d = S.details;
+  $("title").replaceChildren(...(d.title ? [el("span", {}, d.title)] : ["Group ", el("span", {}, "Planner")]));
+  document.title = d.title ? `${d.title} · Group Planner` : "Group Planner";
+  const chips = [];
+  if (d.kind_label) chips.push(el("span", { class: "chip on" }, d.kind_label));
+  if (d.place) chips.push(el("span", { class: "chip" }, d.kind === "trip" ? `from ${d.place}` : d.place));
+  if (d.month) chips.push(el("span", { class: "chip" }, `${MONTHS[d.month - 1]}${d.season ? ` · ${d.season}` : ""}`));
+  if (S.budget.limit != null) chips.push(el("span", { class: "chip" }, `${money(S.budget.limit)} per person${S.budget.all_agreed ? " · agreed" : ""}`));
+  $("summary").replaceChildren(...chips);
+}
 
-$("#composer").onsubmit = async (e) => {
-  e.preventDefault();
-  const text = $("#text").value.trim();
-  if (!text) return;
-  $("#text").value = "";
-  try { await api(`/api/rooms/${code}/messages`, { name: me, text }); poll(); }
-  catch (err) { addMessage({ sender: "App", text: err.message }); }
-};
+function renderSteps() {
+  const b = S.budget, r = S.results, so = r?.signoff;
+  const steps = [
+    ["What & where", S.details.kind && S.details.place ? "set" : "to do", !!(S.details.kind && S.details.place)],
+    ["Everyone's in", `${b.taking_part} joined`, b.taking_part > 0 && b.missing === 0],
+    ["Budget agreed", b.limit == null ? "no budgets yet" : `${b.agreed} of ${b.taking_part}`, b.all_agreed],
+    ["Vote", S.phase === "planning" ? "not started" : `${S.rated} of ${b.taking_part}`, !!r],
+    ["All happy", `${so ? so.in.length : 0} of ${b.taking_part} in`, !!r?.decided],
+  ];
+  const now = steps.findIndex((s) => !s[2]);
+  $("steps").replaceChildren(...steps.map(([label, sub, done], i) =>
+    el("li", { class: `step${done ? " done" : ""}${i === now ? " now" : ""}` }, el("b", {}, label), el("span", {}, sub))));
+}
+
+function ideaRow(s, i) {
+  const thumbs = S.you?.taking_part ? el("div", { class: "thumbs" },
+    el("button", { class: "thumb up", "aria-pressed": String(s.mine > 0), "aria-label": `Like ${s.name}`, onclick: () => act("feedback", { idea: s.name, signal: s.mine > 0 ? 0 : 1 }).catch(say) }, "👍"),
+    el("button", { class: "thumb down", "aria-pressed": String(s.mine < 0), "aria-label": `Rule out ${s.name}`, onclick: () => act("feedback", { idea: s.name, signal: s.mine < 0 ? 0 : -1 }).catch(say) }, "👎")) : null;
+  const links = [];
+  if (s.map_url) links.push(el("a", { href: s.map_url, target: "_blank", rel: "noopener noreferrer" }, S.details.kind === "trip" ? "See on map ↗" : "Find places nearby ↗"));
+  for (const v of s.venues || []) links.push(el("span", {}, "📍 ", el("a", { href: v.url, target: "_blank", rel: "noopener noreferrer" }, v.name), v.note ? ` · ${v.note}` : ""));
+  return el("li", { class: "idea" },
+    el("div", { class: "rank" }, String(i + 1)),
+    el("div", { class: "name" }, s.name),
+    el("div", { class: "cost", title: s.estimate ? "Estimated cost per person" : "Cost per person" }, `${s.estimate ? "~" : ""}${money(s.cost_pp)} pp`),
+    el("div", { class: "why" }, [s.note, (s.reasons || []).join(" · ")].filter(Boolean).join(" — ") || "a solid all-rounder"),
+    thumbs, el("div", { class: "meta" }, links));
+}
+
+function budgetCard() {
+  const b = S.budget, you = S.you || {};
+  const tags = S.people.filter((p) => p.joined && p.active && !p.guest).map((p) =>
+    el("span", { class: `tag ${p.agreed ? "yes" : ""}` }, `${p.is_you ? "You" : p.name} · ${p.budget_max == null ? "no budget yet" : p.agreed ? "agreed" : "to confirm"}`));
+  let action;
+  if (!you.taking_part) action = el("span", { class: "muted" }, "Save your preferences below to take part.");
+  else if (you.budget_max == null) action = el("span", { class: "muted" }, "Add the most you can spend in your preferences below.");
+  else if (you.agreed) action = el("span", { class: "tag yes" }, `You agreed to ${money(b.limit)} per person`);
+  else action = el("button", { class: "btn good small", onclick: () => act("agree", { amount: b.limit }).catch(say) }, `I agree to ${money(b.limit)} per person`);
+  const setters = S.people.filter((p) => p.sets_budget).map((p) => (p.is_you ? "you" : p.name));
+  return el("div", { class: "budget" },
+    el("div", { class: "amount" }, b.limit == null ? "–" : money(b.limit), el("small", {}, "per person")),
+    el("div", {}, el("strong", {}, b.all_agreed ? "Budget agreed by everyone" : "Group budget"),
+      el("div", { class: "muted", style: "font-size:13px" }, b.limit == null ? "Everyone adds the most they can spend. The group budget is the lowest, so nobody is priced out."
+        : `The lowest budget in the group (${setters.join(", ")}), so nobody is priced out. Ideas above it are hidden.`)),
+    el("div", { class: "actions" }, el("div", { class: "agree" }, tags), action));
+}
+
+function addIdeaForm() {
+  const id = (s) => `ni-${s}`;
+  const form = el("form", { class: "grid" },
+    el("label", { class: "f full" }, "Idea", el("input", { type: "text", id: id("name"), maxlength: "70", placeholder: S.details.kind === "trip" ? "e.g. 4 days in Kraków" : "e.g. Crazy golf and burgers" })),
+    el("label", { class: "f" }, "Cost per person", el("span", { class: "money" }, el("span", {}, S.details.currency), el("input", { type: "number", id: id("cost"), min: "0", step: "1", placeholder: "e.g. 30" }))),
+    el("label", { class: "f" }, "Indoors or outdoors", el("select", { id: id("out") }, el("option", { value: "" }, "Either / both"), el("option", { value: "in" }, "Indoors"), el("option", { value: "out" }, "Outdoors"))),
+    el("div", { class: "f full" }, "Vibe", el("div", { class: "seg" }, VIBES.flatMap((v) => [el("input", { type: "checkbox", id: id(`v-${v}`), value: v }), el("label", { for: id(`v-${v}`) }, v)]))),
+    el("div", { class: "full form-actions" }, el("button", { class: "btn small", type: "submit" }, "Add idea"), el("span", { class: "note", id: id("note") })));
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const out = $(id("out")).value;
+    act("idea", { idea: $(id("name")).value.trim(), cost_pp: $(id("cost")).value === "" ? null : Number($(id("cost")).value),
+      vibes: VIBES.filter((v) => $(id(`v-${v}`)).checked), outdoor: out === "" ? null : out === "out" })
+      .then(() => { form.closest("details").open = false; stageKey = ""; renderStage(); })
+      .catch((err) => { $(id("note")).textContent = err.message; });
+  });
+  return el("details", { class: "add" }, el("summary", {}, "Add your own idea"), form);
+}
+
+let stageKey = "";
+function renderStage() {
+  const key = JSON.stringify([S.phase, S.paused, S.ideas, S.finalists, S.results, S.budget, S.people, S.you, S.details, S.vote_blockers, myRatings]);
+  const box = $("stage");
+  if (key === stageKey) return;
+  if (S.phase === "planning" && box.querySelector("details.add[open]") && $("ni-name")?.value.trim()) return; // don't wipe a half-typed idea
+  stageKey = key;
+  if (S.results) return renderResults(box);
+  if (S.phase === "voting") return renderVoting(box);
+  if (!S.details.kind || !S.details.place) {
+    put(box, el("div", { class: "panel-head" }, el("h2", {}, "Let's plan something")),
+      el("div", { class: "empty" }, el("strong", {}, "What are we planning?"),
+        el("span", {}, "A birthday, a dinner, a night out, a trip, anything. Fill in what you're planning below, or just tell the planner bot in the chat."),
+        el("button", { class: "btn ghost", onclick: () => $("kind").focus() }, "Set up the plan")));
+    return;
+  }
+  const n = S.people.filter((p) => p.joined && p.active).length;
+  const list = S.ideas.length ? el("ol", { class: "ideas" }, S.ideas.map(ideaRow))
+    : el("div", { class: "empty" }, el("strong", {}, S.needs_area ? "Pick the kind of area" : "No ideas yet"),
+        el("span", {}, S.needs_area ? "Choose city, suburb, town or rural in the plan details below."
+          : KINDS[S.details.kind][2] ? "Nothing fits the budget yet. Add your own idea, or ask the bot." : "Ask the planner bot for suggestions in the chat, or add your own idea below."));
+  const blockers = S.vote_blockers;
+  put(box, 
+    el("div", { class: "panel-head" }, el("h2", {}, "Ideas"), el("span", { class: "muted" }, `Ranked for ${n} ${n === 1 ? "person" : "people"}`)),
+    budgetCard(),
+    S.paused ? el("p", { class: "paused" }, "Voting is paused until everyone agrees the current budget. Ratings already given are kept.") : null,
+    el("p", { class: "muted", style: "margin:12px 0 0" }, `👍 pulls similar ideas up, 👎 rules one out.${S.over_budget ? ` ${S.over_budget} idea${S.over_budget === 1 ? " is" : "s are"} hidden for going over budget.` : ""}`),
+    list, addIdeaForm(),
+    el("div", { class: "vote-bar" },
+      el("button", { class: "btn", onclick: () => act("start-vote").catch(say), disabled: blockers.length > 0 || !S.you?.taking_part }, "Start the vote"),
+      el("span", { class: "blocker" }, blockers.length ? `Can't vote yet: ${blockers.join("; ")}.` : `Everyone rates the top ${Math.min(6, S.ideas.length)}.`)));
+}
+
+function renderVoting(box) {
+  if (ratingRound !== S.round) { myRatings = { ...(S.you?.my_ratings || {}) }; ratingRound = S.round; }
+  const done = S.finalists.every((f) => Number.isInteger(myRatings[f.name]));
+  const canRate = !!S.you?.taking_part;
+  put(box, 
+    el("div", { class: "panel-head" }, el("h2", {}, "Rate the finalists"), el("span", { class: "muted" }, `${S.rated} of ${S.budget.taking_part} done`)),
+    el("p", { class: "muted", style: "margin:4px 0 12px" }, "Rate every option honestly. \"No way\" rules an option out for the whole group. The winner is the option the least-happy person likes most, so nobody gets stuck with something they hate."),
+    el("div", { style: "display:grid;gap:10px" }, S.finalists.map((f) => el("div", { class: "rate" },
+      el("div", {}, el("span", { class: "name" }, f.name), " ", el("span", { class: "muted" }, `· ${money(f.cost_pp)} pp`)),
+      el("div", { class: "faces", role: "group", "aria-label": `Rate ${f.name}` }, FACES.map(([emo, label], v) =>
+        el("button", { class: `face${v === 0 ? " veto" : ""}`, "aria-pressed": String(myRatings[f.name] === v), disabled: !canRate,
+          onclick: () => { myRatings[f.name] = v; stageKey = ""; renderStage(); } }, emo, el("small", {}, label))))))),
+    el("div", { class: "vote-bar" },
+      el("button", { class: "btn", onclick: () => act("rate", { ratings: myRatings }).catch(say), disabled: !done || !canRate },
+        S.you?.rated ? "Update my ratings" : done ? "Submit my ratings" : "Rate them all to submit"),
+      S.rated ? el("button", { class: "btn ghost", onclick: () => act("close").catch(say), disabled: !canRate }, "Close voting now") : null,
+      el("button", { class: "linkbtn", onclick: () => act("back").catch(say), disabled: !canRate }, "Back to planning"),
+      !canRate ? el("span", { class: "blocker" }, "Save your preferences to join the vote.") : null));
+}
+
+function renderResults(box) {
+  const r = S.results, w = r.winner, so = r.signoff;
+  const youIn = so.in.includes(S.you?.name), youOut = so.out.includes(S.you?.name);
+  const mapLink = (url) => (url ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, S.details.kind === "trip" ? "See on map ↗" : "Find places nearby ↗") : null);
+  let top;
+  if (r.decided) {
+    top = el("div", { class: "decided" }, el("div", { class: "muted" }, "Everyone's in 🎉"), el("div", { class: "big" }, w.name),
+      el("div", {}, `${money(w.cost_pp)} per person, within the budget everyone agreed.`), mapLink(w.map_url));
+  } else if (w) {
+    top = el("div", {},
+      el("div", { class: "winner" }, el("div", { class: "label" }, "Best for everyone"), el("div", { class: "big" }, w.name),
+        el("div", { style: "font-size:14px;opacity:.85" }, `Nobody ruled it out. The least-happy rating is ${FACES[w.min][0]} ${FACES[w.min][1]}. ${money(w.cost_pp)} pp.`), mapLink(w.map_url)),
+      el("div", { class: "signoff" }, el("strong", {}, "Is everyone happy with this?"),
+        el("div", { class: "agree" }, ...so.in.map((n) => el("span", { class: "tag yes" }, `${n} · in`)), ...so.out.map((n) => el("span", { class: "tag no" }, `${n} · not happy`)),
+          ...so.waiting.map((n) => el("span", { class: "tag" }, `${n} · waiting`))),
+        S.you?.taking_part ? el("div", { class: "form-actions" },
+          el("button", { class: "btn good", onclick: () => act("signoff", { in: true }).catch(say) }, youIn ? "You're in ✓" : "I'm in"),
+          el("button", { class: "btn ghost", onclick: () => act("signoff", { in: false }).catch(say) }, youOut ? "You're not happy" : "Not happy")) : null,
+        so.out.length ? el("div", { class: "muted", style: "font-size:13px" }, `${so.out.join(", ")} isn't happy yet. Talk it over in the chat, then plan again.`) : null));
+  } else {
+    top = el("div", { class: "winner" }, el("div", { class: "label" }, "No agreement yet"), el("div", { class: "big" }, "Every option was ruled out by someone"),
+      el("div", { style: "font-size:14px;opacity:.85" }, "Go back to planning, talk in the chat about what would work, and add new ideas."));
+  }
+  const table = el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Option"), el("th", { class: "num" }, "Least happy"), el("th", { class: "num" }, "Total"), el("th", {}, "Ruled out by"))),
+    el("tbody", {}, r.rows.map((row) => el("tr", { class: row.vetoed_by.length ? "out" : "" },
+      el("td", {}, row.name), el("td", { class: "num" }, row.min == null ? "–" : `${FACES[row.min][0]} ${FACES[row.min][1]}`),
+      el("td", { class: "num" }, String(row.total)), el("td", {}, row.vetoed_by.join(", ") || "–"))))));
+  put(box, el("div", { class: "panel-head" }, el("h2", {}, r.decided ? "Decided" : "Results"), el("span", { class: "muted" }, `${S.rated} rated`)),
+    top, table, el("div", { class: "vote-bar" },
+      el("button", { class: "btn ghost", onclick: () => act("back").catch(say), disabled: !S.you?.taking_part }, r.decided ? "Plan something new" : "Back to planning"),
+      !r.decided && w ? el("span", { class: "blocker" }, "It's decided once everyone taps \"I'm in\".") : null));
+}
+
+function renderPeople() {
+  const b = S.budget;
+  const rows = S.people.map((p) => {
+    const status = !p.active ? el("span", { class: "tag" }, "not taking part") : p.guest ? el("span", { class: "tag" }, "added in chat")
+      : !p.joined ? el("span", { class: "tag" }, "no preferences yet") : p.budget_max == null ? el("span", { class: "tag" }, "no budget yet")
+      : p.agreed ? el("span", { class: "tag yes" }, "agreed budget") : el("span", { class: "tag" }, "to agree budget");
+    const actions = [];
+    if (!p.guest && p.id) {
+      if (p.is_you && p.joined) actions.push(el("button", { class: "linkbtn", style: "font-size:13px", onclick: () => act("active", { person: p.id, active: !p.active }).catch(say) }, p.active ? "Leave plan" : "Rejoin"));
+      else if (S.you?.is_host && !p.is_you && p.joined) actions.push(el("button", { class: "linkbtn", style: "font-size:13px", onclick: () => act("active", { person: p.id, active: !p.active }).catch(say) }, p.active ? "Mark as not taking part" : "Include again"));
+    }
+    return el("li", { class: p.active ? "" : "off" },
+      el("span", { class: "av" }, (p.name[0] || "?").toUpperCase()),
+      el("span", { class: "who" }, p.name, p.is_you ? el("small", {}, " (you)") : null, p.is_host ? el("small", {}, " · host") : null),
+      el("span", { class: `spend${p.budget_max == null ? " none" : ""}` }, p.budget_max == null ? "–" : money(p.budget_max),
+        el("small", {}, p.budget_max == null ? "no budget yet" : p.sets_budget ? "sets the group budget" : "max per person")),
+      el("span", { class: "prefs" }, [p.vibe, PLACES[p.place]?.toLowerCase()].filter(Boolean).join(" · "), status, ...actions));
+  });
+  $("people").replaceChildren(...rows);
+  $("people-count").textContent = `${rows.length} ${rows.length === 1 ? "person" : "people"}`;
+  $("people-foot").hidden = b.limit == null;
+  if (b.limit != null) $("people-foot").replaceChildren(el("span", {}, "Group budget (lowest): ", el("b", {}, `${money(b.limit)} per person`)),
+    el("span", { class: "muted" }, b.all_agreed ? "Everyone has agreed" : `${b.agreed} of ${b.taking_part} agreed`));
+}
 
 function addMessage(m) {
-  const mine = m.uid ? m.uid === myId() : m.sender === me;
-  const kind = m.sender === "Bot" ? "bot" : m.sender === "App" ? "app" : mine ? "me" : "other";
-  const who = kind === "app" ? null : el("div", { class: "who" }, kind === "bot" ? "🎈 Planner bot" : m.sender);
-  const box = $("#messages");
+  const kind = m.sender === "Bot" ? "bot" : m.sender === "App" ? "app" : m.uid && m.uid === S?.you?.id ? "mine" : "";
+  const box = $("msgs");
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-  box.append(el("div", { class: `msg ${kind}` }, who, m.text));
-  if (atBottom || kind === "me") box.scrollTop = box.scrollHeight;
+  box.append(el("div", { class: `msg ${kind}` }, kind === "app" ? null : el("div", { class: "who" }, kind === "bot" ? "🎈 Planner bot" : m.sender), kind === "app" ? m.text : el("div", { class: "body" }, m.text)));
+  if (atBottom || kind === "mine") box.scrollTop = box.scrollHeight;
+  if (kind && kind !== "mine" && $("board").dataset.tab === "plan" && !$("tab-chat").querySelector(".badge")) $("tab-chat").append(el("span", { class: "badge" }));
 }
 
-function ideaCard(s, i, opts = {}) {
-  const venues = s.venues.length ? el("ul", { class: "venues" }, ...s.venues.map((v) =>
-    el("li", {}, "📍 ", el("a", { href: v.url, target: "_blank", rel: "noopener noreferrer" }, v.name), v.note ? ` · ${v.note}` : ""))) : null;
-  const pickIndex = picks.indexOf(i + 1);
-  const label = opts.pickable && pickIndex >= 0 ? ["1st", "2nd", "3rd"][pickIndex] : String(i + 1);
-  return el("div", {
-    class: `idea${opts.pickable ? " pickable" : ""}${pickIndex >= 0 && opts.pickable ? " picked" : ""}`,
-    ...(opts.pickable ? { onclick: () => togglePick(i + 1), role: "button", tabindex: "0" } : {}),
-  }, el("div", { class: "num" }, label), el("div", { class: "name" }, s.name),
-     el("div", { class: "why" }, s.reasons.join(" · ") || "A solid all-rounder"), venues);
+/* ---------- Forms ---------- */
+function seg(id, name, values, labels, type = "radio") {
+  $(id).replaceChildren(...values.flatMap((v) => [el("input", { type, name, id: `${id}-${v}`, value: String(v) }), el("label", { for: `${id}-${v}` }, labels ? labels[v] : v)]));
 }
+function options(id, entries) { $(id).replaceChildren(...entries.map(([v, t]) => el("option", { value: v }, t))); }
+seg("me-vibe", "vibe", VIBES);
+seg("me-place", "place", Object.keys(PLACES), PLACES);
+seg("features", "features", FEATURES, null, "checkbox");
+options("kind", [["", "Choose…"], ...Object.entries(KINDS).map(([k, v]) => [k, v[0]])]);
+options("setting", [["", "Choose…"], ...SETTINGS.map((v) => [v, v])]);
+options("month", [["", "Not sure yet"], ...MONTHS.map((m, i) => [String(i + 1), m])]);
+options("hemi", [["", "Choose…"], ...Object.entries(HEMIS)]);
+options("currency", Object.entries(CURRENCIES));
 
-function togglePick(n) {
-  const at = picks.indexOf(n);
-  if (at >= 0) picks.splice(at, 1); else if (picks.length < 3) picks.push(n);
-  sideKey = ""; renderSide();
+let detailsDirty = false, meDirty = false;
+$("details-form").addEventListener("input", () => { detailsDirty = true; syncKind(); });
+$("me-form").addEventListener("input", () => { meDirty = true; });
+function syncKind() {
+  const k = KINDS[$("kind").value];
+  $("place-label").textContent = k ? k[1] : "Town or city";
+  for (const n of document.querySelectorAll("#details-form .local")) n.hidden = !!k && !k[2];
 }
-
-async function submitVote() {
-  try { await api(`/api/rooms/${code}/vote`, { name: me, picks }); poll(); }
-  catch (e) { alert(e.message); }
-}
-
-async function closeVote() {
-  try { await api(`/api/rooms/${code}/close`, {}); poll(); }
-  catch (e) { alert(e.message); }
-}
-
-function renderSide() {
-  const s = state;
-  const key = JSON.stringify([s.phase, s.suggestions, s.voted, s.results, picks, s.members]);
-  if (key === sideKey) return;
-  sideKey = key;
-  const side = $("#side");
-  side.replaceChildren();
-
-  if (s.phase === "results") {
-    const ranking = s.results.ranking;
-    const max = Math.max(1, ...ranking.map((r) => r.points));
-    side.append(el("h3", {}, "Results"),
-      el("div", { class: "winner" }, "🏆 The winner is", el("div", { class: "big" }, ranking[0].name),
-        s.results.tie ? el("div", { class: "muted" }, "It was a tie, broken by the planner's ranking.") : null));
-    for (const r of ranking) {
-      side.append(el("div", { class: "result" }, el("span", {}, r.name), el("span", { class: "muted" }, `${r.points} ${r.points === 1 ? "pt" : "pts"}`),
-        el("div", { class: "bar" }, el("div", { style: `width:${(r.points / max) * 100}%` }))));
-    }
-    return;
+function fillForms() {
+  const d = S.details;
+  if (!detailsDirty) {
+    $("kind").value = d.kind || ""; $("ptitle").value = d.title || ""; $("place").value = d.place || "";
+    $("setting").value = d.setting || ""; $("month").value = d.month ? String(d.month) : ""; $("hemi").value = d.hemisphere || "";
+    $("currency").value = d.currency; for (const f of FEATURES) $(`features-${f}`).checked = (d.features || []).includes(f);
+    syncKind();
   }
-
-  if (!s.suggestions.length) {
-    side.append(el("h3", {}, "Ideas"), el("p", { class: "empty" }, "Tell the bot about the birthday person and where they live. Ten tailored ideas will appear here."));
-    return;
+  for (const c of document.querySelectorAll(".cur")) c.textContent = d.currency;
+  const you = S.you;
+  if (!meDirty && you) {
+    if (you.vibe) $(`me-vibe-${you.vibe}`).checked = true;
+    if (you.place) $(`me-place-${you.place}`).checked = true;
+    $("me-budget").value = you.budget_max ?? "";
   }
-
-  if (s.phase === "voting") {
-    const voted = s.you_voted ?? s.voted.includes(me);
-    side.append(el("h3", {}, "Vote"),
-      el("p", { class: "muted" }, voted ? `Thanks! ${s.voted.length} of ${s.members.length} have voted. You can change your picks until everyone's in.`
-                                        : "Tap your top 3 in order: 1st gets 3 points, 2nd 2, 3rd 1."));
-    s.suggestions.forEach((idea, i) => side.append(ideaCard(idea, i, { pickable: true })));
-    side.append(el("div", { class: "vote-bar" },
-      el("button", { onclick: submitVote, ...(picks.length === 3 ? {} : { disabled: "" }) }, picks.length === 3 ? (voted ? "Update my vote" : "Submit my vote") : `Pick ${3 - picks.length} more`),
-      s.voted.length ? el("button", { class: "ghost", onclick: closeVote }, "Close voting now") : null));
-    return;
-  }
-
-  side.append(el("h3", {}, "Top 10 ideas"), el("p", { class: "muted" }, "Tell the bot what you like or don't, and the list updates."));
-  s.suggestions.forEach((idea, i) => side.append(ideaCard(idea, i)));
+  $("me-save").textContent = you?.vibe ? "Update my preferences" : "Join with these preferences";
 }
+$("details-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const k = KINDS[$("kind").value];
+  act("details", { kind: $("kind").value, title: $("ptitle").value.trim(), place: $("place").value.trim(),
+    setting: k && k[2] ? $("setting").value || null : null, month: Number($("month").value) || null,
+    hemisphere: $("hemi").value || null, currency: $("currency").value, features: FEATURES.filter((f) => $(`features-${f}`).checked) })
+    .then(() => { detailsDirty = false; $("details-note").textContent = "Saved."; }).catch((err) => { $("details-note").textContent = err.message; });
+});
+$("me-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = document.querySelector("input[name=vibe]:checked"), pl = document.querySelector("input[name=place]:checked");
+  const raw = $("me-budget").value;
+  if (!v || !pl) { $("me-note").textContent = "Pick a vibe and indoors or outdoors."; return; }
+  act("preferences", { vibe: v.value, place: pl.value, budget_max: raw === "" ? null : Number(raw) })
+    .then(() => { meDirty = false; $("me-note").textContent = raw === "" ? "Saved. Add a budget so the group can agree one." : "Saved."; })
+    .catch((err) => { $("me-note").textContent = err.message; });
+});
+$("composer").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("text").value.trim();
+  if (!text) return;
+  $("text").value = "";
+  act("messages", { text }).catch((err) => addMessage({ sender: "App", text: err.message }));
+});
+function say(err) { addMessage({ sender: "App", text: err.message }); $("me-note").textContent = err.message; }
 
-let lastSuggestions = "";
-let timer = null;
-let pollError = "";
+for (const t of ["plan", "chat"]) $(`tab-${t}`).onclick = () => {
+  $("board").dataset.tab = t;
+  $("tab-plan").setAttribute("aria-selected", String(t === "plan"));
+  $("tab-chat").setAttribute("aria-selected", String(t === "chat"));
+  if (t === "chat") { $("tab-chat").querySelector(".badge")?.remove(); $("msgs").scrollTop = $("msgs").scrollHeight; }
+};
+
+/* ---------- Polling ---------- */
 async function poll() {
-  clearTimeout(timer);
+  clearTimeout(pollTimer);
   try {
-    state = await api(`/api/rooms/${code}?since=${seen}`);
-    state.chat.forEach(addMessage);
-    seen += state.chat.length;
-    $("#typing").classList.toggle("hidden", !state.bot_busy);
-    $("#members").textContent = `· ${state.members.join(", ")}`;
-    $("#text").disabled = state.phase !== "planning";
-    $("#composer button").disabled = state.phase !== "planning";
-    $("#text").placeholder = state.phase === "planning" ? "Message the group and the bot" : "Planning is done. Vote in the Ideas tab!";
-    const sig = JSON.stringify(state.suggestions) + state.phase;
-    if (sig !== lastSuggestions && lastSuggestions && $("main").dataset.tab === "chat" && !$("#ideas-tab .badge")) {
-      $("#ideas-tab").append(el("span", { class: "badge" }));
+    const q = nameMode() ? `&name=${encodeURIComponent(myName)}` : "";
+    const next = await api(`/api/rooms/${code}?since=${seen}${q}`);
+    S = next;
+    if (S.details) {
+      renderHeader(); renderSteps(); renderStage(); renderPeople(); fillForms();
     }
-    lastSuggestions = sig;
-    renderSide();
+    S.chat.forEach(addMessage);
+    seen += S.chat.length;
+    $("typing").hidden = !S.bot_busy;
     pollError = "";
   } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
     if (e.message !== pollError) addMessage({ sender: "App", text: `Connection problem: ${e.message}` });
     pollError = e.message;
-    if (e.message === "Room not found.") return;
-    if (e.message === "Please sign in first.") { location.reload(); return; }
+    if (e.status === 404) return;
   }
-  timer = setTimeout(poll, state && state.bot_busy ? 1200 : 2500);
+  pollTimer = setTimeout(poll, S?.bot_busy ? 1200 : 2500);
 }
 
 loadAccount().then(() => {
-  const canEnter = account.providers.length ? !!account.user : !!me;
-  if (code && canEnter) enter(code).catch((e) => { $("#welcome-error").textContent = e.message; });
+  const ready = nameMode() ? !!myName : !!account.user;
+  if (code && ready) enter(code).catch((e) => { $("lobby-error").textContent = e.message; });
 });
 </script>
 </body>

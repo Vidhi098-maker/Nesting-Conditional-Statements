@@ -7,30 +7,14 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 from birthday_planner import web
-from tests.test_chatbot import LOCATION, FakeClient, text, tool
-
-
-def scripted_client():
-    return FakeClient([
-        # Turn 1: save details, rank ideas, pin a venue found by search.
-        ([tool("update_location", LOCATION, "t1"),
-          tool("add_friend", {"name": "Ana", "vibe": "party", "place": "outdoor", "budget": 2}, "t2"),
-          tool("get_suggestions", {}, "t3")], "tool_use"),
-        ([tool("attach_venues", {"idea": "PLACEHOLDER", "venues": [
-            {"name": "Real Spot", "url": "https://example.com/spot", "note": "Near the river"}]}, "t4"),
-          tool("attach_venues", {"idea": "PLACEHOLDER", "venues": [
-            {"name": "Sketchy", "url": "javascript:alert(1)"}]}, "t5")], "tool_use"),
-        ([text("Here are your 10 ideas!")], "end_turn"),
-        # Turn 2: open the vote.
-        ([tool("start_vote", {}, "t6")], "tool_use"),
-        ([text("Voting is open!")], "end_turn"),
-    ])
+from tests.test_chatbot import FakeClient, text, tool
 
 
 class WebAppTests(unittest.TestCase):
-    def setUp(self):
-        self.client = scripted_client()
-        self.app = web.App(self.client)
+    """The group planner over HTTP, in name-only mode (sign-in is covered in test_auth)."""
+
+    def start(self, client=None):
+        self.app = web.App(client)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), web.make_handler(self.app))
         self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -41,89 +25,129 @@ class WebAppTests(unittest.TestCase):
 
     def call(self, path, body=None):
         data = None if body is None else json.dumps(body).encode()
-        req = urllib.request.Request(self.base + path, data=data,
-                                     headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(self.base + path, data=data, headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req) as res:
                 return res.status, json.loads(res.read())
         except urllib.error.HTTPError as err:
             return err.code, json.loads(err.read())
 
-    def wait_for_bot(self, code):
-        for _ in range(100):
-            status, state = self.call(f"/api/rooms/{code}")
-            if not state["bot_busy"]:
-                return state
+    def as_(self, name):
+        """Helpers that act as one person."""
+        def post(action, **body):
+            return self.call(f"/api/rooms/{self.code}/{action}", {"name": name, **body})
+        def view():
+            return self.call(f"/api/rooms/{self.code}?name={name}")[1]
+        return post, view
+
+    def new_room(self, *names):
+        self.code = self.call("/api/rooms", {})[1]["code"]
+        for n in names:
+            self.assertEqual(self.call(f"/api/rooms/{self.code}/join", {"name": n})[0], 200)
+
+    def wait_for_bot(self):
+        for _ in range(200):
+            room = self.app.room(self.code)
+            if not room.bot_busy:
+                return
             time.sleep(0.02)
         self.fail("bot never finished")
 
     def test_index_page_served(self):
+        self.start()
         with urllib.request.urlopen(self.base + "/") as res:
-            self.assertIn(b"Birthday Planner", res.read())
+            self.assertIn(b"Group Planner", res.read())
 
-    def test_full_group_flow(self):
-        _, created = self.call("/api/rooms", {})
-        code = created["code"]
-        self.assertEqual(self.call(f"/api/rooms/{code}/join", {"name": "Ana"})[0], 200)
-        self.assertEqual(self.call(f"/api/rooms/{code.lower()}/join", {"name": "Ben"})[0], 200)
+    def test_full_group_plan_over_http(self):
+        self.start()
+        self.new_room("Devan", "Ana", "Ben")
+        devan, ana, ben = (self.as_(n)[0] for n in ("Devan", "Ana", "Ben"))
+        self.assertEqual(devan("details", kind="trip", title="Summer trip", place="London", currency="£")[0], 200)
+        devan("preferences", vibe="chill", place="either", budget_max=800)
+        ana("preferences", vibe="adventurous", place="outdoor", budget_max=650)
+        ben("preferences", vibe="party", place="either", budget_max=900)
+        for name, cost in (("4 days in Krakow", 450), ("Porto long weekend", 520), ("Dolomites hike", 780)):
+            self.assertEqual(devan("idea", idea=name, cost_pp=cost, vibes=["chill"])[0], 200)
 
-        # Fill the attach_venues placeholders with a real top idea once we know it.
-        def fill_placeholder():
-            room = self.app.room(code)
-            original = room.planner.tool_get_suggestions
+        # Voting is refused by the server until everyone agrees the £650 budget.
+        status, body = devan("start-vote")
+        self.assertEqual(status, 400)
+        self.assertIn("agree the budget", body["error"])
+        self.assertEqual(ana("agree", amount=700)[0], 400)          # stale amount
+        for p in (devan, ana, ben):
+            self.assertEqual(p("agree", amount=650)[0], 200)
 
-            def patched():
-                result = original()
-                top = room.planner.suggestions[0]["name"]
-                for content, _ in self.client.responses:
-                    for block in content:
-                        if getattr(block, "name", "") == "attach_venues":
-                            block.input["idea"] = top
-                return result
-            room.planner.tool_get_suggestions = patched
-        fill_placeholder()
+        view = self.as_("Ana")[1]()
+        self.assertEqual(view["budget"], {"limit": 650, "all_agreed": True, "agreed": 3, "taking_part": 3, "missing": 0})
+        self.assertEqual(view["over_budget"], 1)
+        self.assertEqual([p["name"] for p in view["people"]], ["Devan", "Ana", "Ben"])
+        self.assertTrue(next(p for p in view["people"] if p["name"] == "Ana")["sets_budget"])
 
-        self.assertEqual(self.call(f"/api/rooms/{code}/messages",
-                                   {"name": "Ana", "text": "It's Sam's birthday in Lisbon!"})[0], 200)
-        state = self.wait_for_bot(code)
-        self.assertEqual(len(state["suggestions"]), 10)
-        self.assertEqual(state["suggestions"][0]["venues"][0]["name"], "Real Spot")
-        self.assertEqual(state["chat"][-1], {"id": len(state["chat"]) - 1, "sender": "Bot", "uid": None,
-                                             "text": "Here are your 10 ideas!"})
-        # The bot saw the sender's name.
-        self.assertEqual(self.client.requests[0]["messages"][-1]["content"],
-                         "[Ana]: It's Sam's birthday in Lisbon!")
-        # A non-http venue URL was rejected back to Claude as an error.
-        results = self.client.requests[2]["messages"][-1]["content"]
-        self.assertTrue(results[1]["is_error"])
+        self.assertEqual(devan("start-vote")[0], 200)
+        finalists = [f["name"] for f in self.as_("Ben")[1]()["finalists"]]
+        self.assertEqual(finalists, ["4 days in Krakow", "Porto long weekend"])
+        devan("rate", ratings={"4 days in Krakow": 4, "Porto long weekend": 2})
+        ana("rate", ratings={"4 days in Krakow": 3, "Porto long weekend": 0})
+        self.assertIsNone(self.as_("Ben")[1]()["results"])
+        ben("rate", ratings={"4 days in Krakow": 2, "Porto long weekend": 4})
+        results = self.as_("Ben")[1]()["results"]
+        self.assertEqual(results["winner"]["name"], "4 days in Krakow")
+        self.assertEqual(results["rows"][1]["vetoed_by"], ["Ana"])
 
-        # Strangers can't post; then the bot opens voting.
-        self.assertEqual(self.call(f"/api/rooms/{code}/messages", {"name": "Eve", "text": "hi"})[0], 400)
-        self.call(f"/api/rooms/{code}/messages", {"name": "Ben", "text": "Let's vote"})
-        state = self.wait_for_bot(code)
-        self.assertEqual(state["phase"], "voting")
-        self.assertEqual(self.call(f"/api/rooms/{code}/messages", {"name": "Ben", "text": "x"})[0], 400)
+        for p in (devan, ana, ben):
+            self.assertEqual(p("signoff", **{"in": True})[0], 200)
+        view = self.as_("Devan")[1]()
+        self.assertTrue(view["results"]["decided"])
+        self.assertIn("Decided: 4 days in Krakow", view["chat"][-1]["text"])
 
-        # Bad ballots are rejected; results appear once everyone has voted.
-        self.assertEqual(self.call(f"/api/rooms/{code}/vote", {"name": "Ana", "picks": [1, 1, 2]})[0], 400)
-        self.call(f"/api/rooms/{code}/vote", {"name": "Ana", "picks": [2, 1, 3]})
-        self.assertIsNone(self.call(f"/api/rooms/{code}")[1]["results"])
-        self.call(f"/api/rooms/{code}/vote", {"name": "Ben", "picks": [2, 3, 1]})
-        state = self.call(f"/api/rooms/{code}")[1]
-        self.assertEqual(state["phase"], "results")
-        self.assertEqual(state["results"]["ranking"][0]["name"], state["suggestions"][1]["name"])
+    def test_only_the_host_can_sideline_someone(self):
+        self.start()
+        self.new_room("Devan", "Ana", "Ben")
+        devan, ana, ben = (self.as_(n)[0] for n in ("Devan", "Ana", "Ben"))
+        devan("details", kind="trip", place="London")
+        for p in (devan, ana, ben):
+            p("preferences", vibe="chill", place="either", budget_max=500)
+        ben_id = next(p["id"] for p in self.as_("Devan")[1]()["people"] if p["name"] == "Ben")
+        self.assertEqual(ana("active", person=ben_id, active=False)[0], 400)
+        self.assertEqual(devan("active", person=ben_id, active=False)[0], 200)
+        self.assertEqual(self.as_("Devan")[1]()["budget"]["taking_part"], 2)
 
-        # Polling with ?since only returns new chat messages.
-        total = len(self.call(f"/api/rooms/{code}")[1]["chat"])
-        self.assertEqual(self.call(f"/api/rooms/{code}?since={total}")[1]["chat"], [])
-
-    def test_errors(self):
+    def test_strangers_and_unknown_actions(self):
+        self.start()
+        self.new_room("Devan")
+        self.assertEqual(self.call(f"/api/rooms/{self.code}/messages", {"name": "Eve", "text": "hi"})[0], 400)
+        self.assertEqual(self.call(f"/api/rooms/{self.code}/agree", {"name": "Eve"})[0], 400)
+        self.assertEqual(self.call(f"/api/rooms/{self.code}/explode", {"name": "Devan"})[0], 404)
         self.assertEqual(self.call("/api/rooms/NOPE1")[0], 404)
-        _, created = self.call("/api/rooms", {})
-        code = created["code"]
-        self.assertEqual(self.call(f"/api/rooms/{code}/join", {"name": "  "})[0], 400)
-        self.assertEqual(self.call(f"/api/rooms/{code}/join", {"name": "Bot"})[0], 400)
-        self.assertEqual(self.call(f"/api/rooms/{code}/close", {})[0], 400)
+        self.assertEqual(self.call(f"/api/rooms/{self.code}/join", {"name": "Bot"})[0], 400)
+
+    def test_bot_plans_with_tools_and_can_only_act_for_senders(self):
+        client = FakeClient([
+            ([tool("set_plan", {"kind": "trip", "title": "Summer trip", "place": "London", "currency": "£"}, "t1"),
+              tool("set_preferences", {"person": "Ana", "vibe": "adventurous", "place": "outdoor", "budget_max": 650}, "t2"),
+              tool("agree_budget", {"person": "Devan"}, "t3"),          # Devan didn't write: refused
+              tool("add_idea", {"name": "4 days in Krakow", "cost_per_person": 450, "vibes": ["chill"], "note": "Cheap flights"}, "t4"),
+              tool("get_suggestions", {}, "t5")], "tool_use"),
+            ([text("Saved! Krakow fits the budget.")], "end_turn"),
+        ])
+        self.start(client)
+        self.new_room("Devan", "Ana")
+        self.as_("Ana")[0]("messages", text="Trip from London! I'm adventurous, can do £650")
+        self.wait_for_bot()
+
+        view = self.as_("Ana")[1]()
+        self.assertEqual(view["details"]["title"], "Summer trip")
+        self.assertEqual(view["you"]["budget_max"], 650)
+        self.assertEqual([i["name"] for i in view["ideas"]], ["4 days in Krakow"])
+        self.assertEqual(view["chat"][-1]["text"], "Saved! Krakow fits the budget.")
+        results = client.requests[1]["messages"][-1]["content"]
+        self.assertTrue(results[2]["is_error"])
+        self.assertIn("only act for people who wrote", results[2]["content"])
+        self.assertIn('"ideas": [{"name": "4 days in Krakow"', results[4]["content"])
+        # The bot saw the plan state and who wrote.
+        first = client.requests[0]["messages"][-1]["content"]
+        self.assertIn("(Current plan, from the app:", first)
+        self.assertIn("[Ana]: Trip from London!", first)
 
     def test_api_failure_keeps_room_usable(self):
         class Broken:
@@ -134,14 +158,12 @@ class WebAppTests(unittest.TestCase):
             def create(self, **kwargs):
                 raise RuntimeError("network down")
 
-        self.app.client = Broken()
-        _, created = self.call("/api/rooms", {})
-        code = created["code"]
-        self.call(f"/api/rooms/{code}/join", {"name": "Ana"})
-        self.call(f"/api/rooms/{code}/messages", {"name": "Ana", "text": "hello"})
-        state = self.wait_for_bot(code)
-        self.assertIn("couldn't reach", state["chat"][-1]["text"])
-        self.assertEqual(self.app.room(code).history, [])
+        self.start(Broken())
+        self.new_room("Ana")
+        self.as_("Ana")[0]("messages", text="hello")
+        self.wait_for_bot()
+        self.assertIn("couldn't reach", self.as_("Ana")[1]()["chat"][-1]["text"])
+        self.assertEqual(self.app.room(self.code).history, [])
 
 
 if __name__ == "__main__":

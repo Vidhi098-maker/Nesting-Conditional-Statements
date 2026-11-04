@@ -1,5 +1,6 @@
-"""Group web app: friends join a room from their phones, chat with the
-planner bot together, see real local venues, and vote.
+"""Group web app: friends sign in, plan anything together (a birthday, a
+dinner, a night out, a trip...), agree a budget, chat with the planner bot,
+rate the finalists and sign off when everyone's happy.
 
     python3 -m birthday_planner.web            # http://localhost:8000
     python3 -m birthday_planner.web --port 9000
@@ -8,6 +9,8 @@ With Google and/or Apple credentials in the environment (see auth.py), people
 sign in with those accounts and every action is tied to who they are.
 Without them the app runs in a simple "type your name" mode for local testing.
 
+The planning rules live in group.py and are enforced here on the server, so
+nobody can open the vote early, agree a budget for someone else or vote twice.
 Rooms and sessions live in memory, so they disappear when the server restarts.
 """
 
@@ -22,37 +25,25 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .chatbot import (
-    ATTACH_VENUES_TOOL, SYSTEM_PROMPT, TOOLS, WEB_SEARCH_TOOL, Planner, run_turn,
-)
 from .auth import SESSION_TTL, Auth, AuthError, providers_from_env
-from .voting import tally, validate_ballot, winners
+from .chatbot import run_turn
+from .group import GroupPlan, PlanError
+from .group_bot import GROUP_PROMPT, TOOLS as BOT_TOOLS, GroupBot
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 10_000
 MAX_NAME = 30
 MAX_TEXT = 1000
+MAX_CHAT = 500
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 SESSION_COOKIE = "bp_session"
 LOGIN_COOKIE = "bp_login"
+GREETING = ("Hi everyone! What are we planning? A birthday, a dinner, a night out, a trip, "
+            "anything. Tell me what you have in mind and roughly what you can spend.")
 
-GROUP_PROMPT = SYSTEM_PROMPT + """
 
-This is a group chat. Each user message starts with the sender's name in square \
-brackets, e.g. "[Ana]: I'd love something outdoors". Several people may write at \
-once. Collect preferences from each person who is chatting, using their name with \
-add_friend, and address people by name.
-
-Finding real places:
-- After you show the 10 ideas, use web_search to find real places near where the \
-birthday person lives for the top 3 ideas (and for any idea someone asks about).
-- Pin what you find with attach_venues. Only attach places that actually appeared in \
-your search results, with the result's URL. Never make up a venue.
-- Mention one or two of the best finds briefly in your reply; the app shows the rest.
-
-The vote happens in the app: when you call start_vote, everyone gets voting buttons."""
-
-WEB_TOOLS = TOOLS + [ATTACH_VENUES_TOOL, WEB_SEARCH_TOOL]
+class UnknownAction(Exception):
+    pass
 
 
 class Room:
@@ -60,49 +51,27 @@ class Room:
         self.code = code
         self.client = client
         self.lock = threading.Lock()
-        self.planner = Planner()
+        self.plan = GroupPlan()
         self.history = []      # what Claude sees
-        self.chat = []         # what people see: {"id", "sender", "text"}
+        self.chat = []         # what people see: {"id", "sender", "uid", "text"}
         self.members = {}      # user id -> display name, in join order
-        self.pending = []      # messages waiting for the bot
+        self.pending = []      # (uid, name, text) waiting for the bot
         self.bot_busy = False
-        self.ballots = {}
-        self.closed = False
 
     # Everything below that touches room state is called with self.lock held.
 
     def post(self, sender, text, uid=None):
-        self.chat.append({"id": len(self.chat), "sender": sender, "uid": uid, "text": text})
-
-    def phase(self):
-        if self.closed:
-            return "results"
-        if self.planner.vote_requested:
-            return "voting"
-        return "planning"
-
-    def results(self):
-        if not self.closed:
-            return None
-        names = [s["name"] for s in self.planner.suggestions]
-        results = tally(names, list(self.ballots.values()))
-        return {"ranking": results, "tie": len(winners(results)) > 1}
+        self.chat.append({"id": len(self.chat), "sender": sender, "uid": self.plan.token(uid) if uid else None, "text": text})
 
     def snapshot(self, since, uid=None):
-        venues = self.planner.venues
+        view = self.plan.view(uid) if uid in self.members else {}
         return {
             "code": self.code,
-            "phase": self.phase(),
-            "you": {"id": uid, "name": self.members.get(uid)} if uid in self.members else None,
-            "you_voted": uid in self.ballots,
             "members": list(self.members.values()),
             "bot_busy": self.bot_busy,
             "chat": self.chat[since:],
-            "suggestions": [
-                {**s, "venues": venues.get(s["name"], [])} for s in self.planner.suggestions
-            ],
-            "voted": [self.members[u] for u in self.ballots if u in self.members],
-            "results": self.results(),
+            "chat_total": len(self.chat),
+            **view,
         }
 
 
@@ -119,7 +88,7 @@ class App:
                 code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(5))
                 if code not in self.rooms:
                     room = Room(code, self.client)
-                    room.post("Bot", "Hi everyone! Whose birthday are we planning, and where do they live?")
+                    room.post("Bot", GREETING)
                     self.rooms[code] = room
                     return room
 
@@ -134,18 +103,19 @@ class App:
                 while label in taken:  # two people with the same name get told apart
                     label, n = f"{name} ({n})", n + 1
                 room.members[uid] = label
-                room.post("App", f"{label} joined the planning.")
+                room.plan.join(uid, label)
+                room.post("App", f"{label} joined.")
 
     def send(self, room, uid, text):
         with room.lock:
-            if room.phase() != "planning":
-                raise ValueError("Planning is over. Time to vote!")
             if uid not in room.members:
                 raise ValueError("Join the room first.")
+            if len(room.chat) >= MAX_CHAT:
+                raise ValueError("This chat is full. Start a new plan to keep chatting.")
             name = room.members[uid]
             room.post(name, text, uid)
-            room.pending.append(f"[{name}]: {text}")
-            if room.bot_busy:
+            room.pending.append((uid, name, text))
+            if room.bot_busy or room.client is None:
                 return  # the running bot worker will pick it up
             room.bot_busy = True
         threading.Thread(target=self.bot_worker, args=(room,), daemon=True).start()
@@ -157,13 +127,17 @@ class App:
                 if not room.pending:
                     room.bot_busy = False
                     return
-                batch = "\n".join(room.pending)
+                batch = list(room.pending)
                 room.pending.clear()
+                brief = json.dumps(room.plan.brief())
+                round_before = room.plan.round
+            senders = {name: uid for uid, name, _ in batch}
+            content = f"(Current plan, from the app: {brief})\n" + "\n".join(f"[{n}]: {t}" for _, n, t in batch)
             turn_start = len(room.history)
-            room.history.append({"role": "user", "content": batch})
+            room.history.append({"role": "user", "content": content})
             try:
-                reply = run_turn(room.client, room.planner, room.history,
-                                 system=GROUP_PROMPT, tools=WEB_TOOLS)
+                reply = run_turn(room.client, GroupBot(room, senders), room.history,
+                                 system=GROUP_PROMPT, tools=BOT_TOOLS)
             except Exception as err:  # keep the room alive if the API call fails
                 print(f"[room {room.code}] bot error: {err!r}")
                 del room.history[turn_start:]
@@ -171,31 +145,44 @@ class App:
             with room.lock:
                 if reply:
                     room.post("Bot", reply)
-                if room.planner.vote_requested:
-                    room.post("App", "Voting is open! Pick your top 3.")
+                if room.plan.round != round_before:
+                    room.post("App", "Voting is open! Rate every option.")
 
-    def vote(self, room, uid, picks):
-        with room.lock:
-            if room.phase() != "voting":
-                raise ValueError("Voting isn't open.")
-            if uid not in room.members:
-                raise ValueError("Join the room first.")
-            error = validate_ballot(picks, len(room.planner.suggestions))
-            if error:
-                raise ValueError(error)
-            room.ballots[uid] = picks
-            if len(room.ballots) == len(room.members):
-                room.closed = True
-
-    def close_vote(self, room, uid):
+    def act(self, room, uid, action, data):
+        """Apply one person's action to the plan. Raises PlanError if it isn't allowed."""
         with room.lock:
             if uid not in room.members:
-                raise ValueError("Join the room first.")
-            if room.phase() != "voting":
-                raise ValueError("Voting isn't open.")
-            if not room.ballots:
-                raise ValueError("Nobody has voted yet.")
-            room.closed = True
+                raise PlanError("Join the room first.")
+            plan = room.plan
+            if action == "details":
+                fields = {k: data[k] for k in ("kind", "title", "place", "setting", "features", "hemisphere", "month", "currency") if k in data}
+                plan.set_details(fields)
+            elif action == "preferences":
+                plan.set_preferences(uid, data.get("vibe"), data.get("place"), data.get("budget_max"))
+            elif action == "agree":
+                plan.agree_budget(uid, data.get("amount"))
+            elif action == "feedback":
+                plan.set_feedback(uid, data.get("idea"), data.get("signal") or 0)
+            elif action == "idea":
+                plan.add_idea(data.get("idea"), data.get("cost_pp"), data.get("vibes"), data.get("outdoor"),
+                              data.get("note", ""), by_bot=False, added_by=uid)
+            elif action == "active":
+                plan.set_active(uid, data.get("person"), bool(data.get("active")))
+            elif action == "start-vote":
+                plan.start_vote(uid)
+                room.post("App", f"{room.members[uid]} opened the vote. Rate every option.")
+            elif action == "rate":
+                plan.rate(uid, data.get("ratings"))
+            elif action == "close":
+                plan.close_vote(uid)
+            elif action == "back":
+                plan.back_to_planning(uid)
+            elif action == "signoff":
+                plan.sign_off(uid, bool(data.get("in")))
+                if plan.result()[2]:
+                    room.post("App", f"Decided: {plan.result()[1]['name']}. Everyone's in! 🎉")
+            else:
+                raise UnknownAction(action)
 
 
 def clean_name(value):
@@ -352,9 +339,12 @@ def make_handler(app):
                 if key == "since" and value.isdigit():
                     since = int(value)
             try:
-                uid = self.identity()[0] if app.auth else None
+                name = self.query().get("name")
+                uid = self.identity({"name": name})[0] if app.auth or name else None
             except NotSignedIn:
                 return self.send_json(401, {"error": "Please sign in first."})
+            except ValueError:
+                uid = None
             with room.lock:
                 self.send_json(200, room.snapshot(since, uid))
 
@@ -384,16 +374,12 @@ def make_handler(app):
                     if not text:
                         raise ValueError("Message is empty.")
                     app.send(room, uid, text)
-                elif action == "vote":
-                    picks = data.get("picks")
-                    if not isinstance(picks, list) or not all(isinstance(p, int) for p in picks):
-                        raise ValueError("Picks must be a list of numbers.")
-                    app.vote(room, uid, picks)
-                elif action == "close":
-                    app.close_vote(room, uid)
                 else:
-                    self.send_json(404, {"error": "Not found."})
-                    return
+                    try:
+                        app.act(room, uid, action, data)
+                    except UnknownAction:
+                        self.send_json(404, {"error": "Not found."})
+                        return
                 self.send_json(200, {"ok": True})
             except NotSignedIn:
                 self.send_json(401, {"error": "Please sign in first."})

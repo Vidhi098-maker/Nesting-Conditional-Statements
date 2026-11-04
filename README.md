@@ -66,7 +66,7 @@ birthday in July, we're in Lisbon by the sea, Ana loves a party..."). The
 5. **Group vote.** When the group is happy, Claude calls `start_vote` and
    everyone ranks their top 3 as before.
 
-### Group web app (chat from your phones)
+### Group web app (plan anything, from your phones)
 
 ```bash
 pip install -r requirements.txt
@@ -74,15 +74,27 @@ export ANTHROPIC_API_KEY=...
 python3 -m birthday_planner.web        # prints a link friends on your Wi-Fi can open
 ```
 
-- One person taps **Start a new plan** and shares the invite link or the 5-letter room code.
-- Everyone chats with the planner bot in one group chat. The bot sees who said
-  what, so it can save each friend's preferences.
-- The **Ideas** panel shows the algorithm's live top 10. Claude uses web search
-  to find **real local venues** for the top ideas and pins them with links.
-  It's only allowed to pin places that appeared in its search results.
-- When the group is ready, the bot opens voting. Everyone taps their top 3 on
-  their own phone, and results show when all have voted (or someone closes
-  the vote early).
+The same group planner as the hosted page, run on your own server:
+
+- **Any kind of plan:** a birthday, a dinner, a day or night out, a trip, or
+  anything else. Local plans use the built-in idea catalog; for trips and
+  anything else the planner bot adds concrete options with estimated costs
+  (it can web-search current prices and pin real venues), and anyone can add
+  their own.
+- **A budget everyone agrees:** each person gives the most they can spend per
+  person; the group budget is the lowest. Everyone agrees that exact amount
+  before voting opens, and has to agree again if it changes.
+- **Voting built for agreement:** everyone rates the finalists from "No way"
+  to "Love it". Any "No way" rules an option out, and the winner is the one
+  the least-happy person likes most.
+- **Sign-off:** it's decided once everyone taps "I'm in". The host (whoever
+  started the plan) can mark someone who's gone quiet as not taking part.
+
+The rules live in `birthday_planner/group.py` and are enforced by the server,
+so nobody can open the vote early, agree a budget for someone else or rate
+twice. The bot (`group_bot.py`) can only act for people who wrote in the
+messages it's answering. Other people never see your Google or Apple account
+ID, only a random per-room ID.
 
 #### Sign in with Google and Apple
 
