@@ -96,6 +96,17 @@ twice. The bot (`group_bot.py`) can only act for people who wrote in the
 messages it's answering. Other people never see your Google or Apple account
 ID, only a random per-room ID.
 
+#### Deploying on Render
+
+Create a **Web Service** from this repository and branch, with:
+- Build command: `pip install -r requirements.txt`
+- Start command: `python -m birthday_planner.web`
+
+The app picks up Render's `PORT` and `RENDER_EXTERNAL_URL` automatically.
+Add `ANTHROPIC_API_KEY` (and the Google/Apple variables below once you have
+them) under Environment Variables. On the free plan the service sleeps when
+idle, and because plans are kept in memory they're cleared when it does.
+
 #### Sign in with Google and Apple
 
 With credentials set, people sign in with their Google or Apple account

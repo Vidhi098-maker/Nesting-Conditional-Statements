@@ -417,8 +417,9 @@ def build_auth(public_url, env=os.environ):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run the group birthday planner web app.")
     parser.add_argument("--host", default="0.0.0.0", help="Address to listen on (default: all).")
-    parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--public-url", default=os.environ.get("PUBLIC_URL", ""),
+    # Hosts like Render pass the port and public address in the environment.
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT") or 8000))
+    parser.add_argument("--public-url", default=os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL", ""),
                         help="Address people open, needed for Google/Apple sign-in.")
     args = parser.parse_args(argv)
 
