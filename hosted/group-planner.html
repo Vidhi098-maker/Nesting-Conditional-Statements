@@ -484,7 +484,9 @@ function plan() {
 const cur = () => plan().currency;
 function money(x) { return x == null ? "–" : `${cur()}${Math.round(x).toLocaleString()}`; }
 
-function members() { return Object.entries(S.friends).filter(([, f]) => VIBES.includes(f.vibe)).map(([uid, f]) => ({ uid, ...f })); }
+/* People taking part. Someone who left, or whom the host marked as not
+   taking part, no longer counts towards the budget, the vote or sign-off. */
+function members() { return Object.entries(S.friends).filter(([, f]) => VIBES.includes(f.vibe) && f.active !== false).map(([uid, f]) => ({ uid, ...f })); }
 function everyone() { return [...members(), ...Object.values(S.guests).filter((g) => VIBES.includes(g.vibe))]; }
 function budgetOf(m) { return Number.isFinite(m.budgetMax) && m.budgetMax > 0 ? m.budgetMax : null; }
 
@@ -526,7 +528,15 @@ function ranking() {
   return suggest(candidates(), context(), summarizeGroup(everyone()), groupFeedback());
 }
 
-function phase() { return plan().phase || "planning"; }
+/* The stored phase is only honoured while everyone has agreed the current
+   budget. Every viewer checks this from records only each person can write,
+   so opening the vote early (or a budget dropping mid-vote) just pauses it. */
+function storedPhase() { return plan().phase || "planning"; }
+function phase() { return storedPhase() !== "planning" && !budgetStatus().allAgreed ? "planning" : storedPhase(); }
+function frozenList() {
+  const limit = budgetStatus().limit;
+  return (plan().frozen || []).filter((f) => f && typeof f.name === "string" && (limit == null || Number(f.costPP) <= limit));
+}
 function round() { return plan().round || 0; }
 function ballots() {
   return Object.entries(S.ratings).filter(([uid, r]) => r.round === round() && r.ratings && S.friends[uid]).map(([uid, r]) => ({ uid, ratings: r.ratings }));
@@ -588,7 +598,7 @@ function renderHeader() {
 
 function renderSteps() {
   const p = plan(), bs = budgetStatus(), ms = members(), ph = phase(), so = signoffs();
-  const decided = showingResults() && ms.length > 0 && so.in.length === ms.length && consensus(p.frozen || [], ballots()).winner;
+  const decided = showingResults() && ms.length > 0 && so.in.length === ms.length && consensus(frozenList(), ballots()).winner;
   const steps = [
     ["What & where", p.kind && p.place ? "set" : "to do", !!(p.kind && p.place)],
     ["Everyone's in", `${ms.length} joined`, ms.length > 0 && bs.missing.length === 0],
@@ -693,6 +703,8 @@ function renderStage() {
   box.replaceChildren(
     el("div", { class: "panel-head" }, el("h2", {}, "Ideas"), el("span", { class: "muted" }, `Ranked for ${everyone().length} ${everyone().length === 1 ? "person" : "people"}`)),
     budgetCard(),
+    storedPhase() !== "planning" ? el("p", { class: "tag no", style: "display:block;margin:12px 0 0;padding:8px 12px;border-radius:10px" },
+      "Voting is paused until everyone agrees the current budget. Votes already cast are kept.") : null,
     el("p", { class: "muted", style: "margin:12px 0 0" }, `👍 pulls similar ideas up, 👎 rules one out.${r.overBudget ? ` ${r.overBudget} idea${r.overBudget === 1 ? " is" : "s are"} hidden for going over budget.` : ""}`),
     list,
     addIdeaForm(),
@@ -702,7 +714,7 @@ function renderStage() {
 }
 
 function renderVoting(box) {
-  const list = plan().frozen || [], b = ballots(), mine = b.find((x) => x.uid === me.id);
+  const list = frozenList(), b = ballots(), mine = b.find((x) => x.uid === me.id);
   if (mine && !Object.keys(myRatings).length) myRatings = { ...mine.ratings };
   const done = list.every((f) => Number.isInteger(myRatings[f.name]));
   box.replaceChildren(
@@ -721,7 +733,7 @@ function renderVoting(box) {
 }
 
 function renderResults(box) {
-  const { rows, winner } = consensus(plan().frozen || [], ballots());
+  const { rows, winner } = consensus(frozenList(), ballots());
   const so = signoffs(), ms = members();
   const everyoneIn = winner && ms.length > 0 && so.in.length === ms.length;
   const head = el("div", { class: "panel-head" }, el("h2", {}, everyoneIn ? "Decided" : "Results"), el("span", { class: "muted" }, `${ballots().length} rated`));
@@ -759,6 +771,24 @@ function renderResults(box) {
       !everyoneIn && winner ? el("span", { class: "blocker" }, "It's decided once everyone taps \"I'm in\".") : null));
 }
 
+/* Leave or rejoin yourself; the host can mark someone who has gone quiet as
+   not taking part so the group isn't stuck waiting for them. */
+function rosterActions(uid, f, guest) {
+  if (guest || !me.id || !canWrite) return [];
+  const out = f.active === false;
+  if (uid === me.id) return [el("button", { class: "linkbtn", style: "font-size:13px", onclick: () => setActive(uid, out) }, out ? "Rejoin" : "Leave plan")];
+  if (me.isOwner) return [el("button", { class: "linkbtn", style: "font-size:13px", onclick: () => setActive(uid, out) }, out ? "Include again" : "Mark as not taking part")];
+  return [];
+}
+async function setActive(uid, active) {
+  try {
+    const next = { ...S.friends[uid], active };
+    S.friends[uid] = next;
+    await db.doc(`friends/${uid}`).set(next);
+    render();
+  } catch { say("Couldn't change that just now. Try again in a moment."); }
+}
+
 /* Everyone who has joined (saved preferences), with what they can spend. */
 function displayName(uid) { return S.names[uid] || (uid === me.id ? me.name : "") || "Someone"; }
 function renderPeople() {
@@ -767,14 +797,15 @@ function renderPeople() {
   const row = ({ uid, name, f, guest }) => {
     const b = budgetOf(f);
     const sets = b != null && b === bs.limit;
-    const status = guest ? el("span", { class: "tag" }, "added in chat")
+    const status = f.active === false ? el("span", { class: "tag" }, "not taking part")
+      : guest ? el("span", { class: "tag" }, "added in chat")
       : b == null ? el("span", { class: "tag" }, "no budget yet")
       : bs.agreed.includes(uid) ? el("span", { class: "tag yes" }, "agreed budget") : el("span", { class: "tag" }, "to agree budget");
     return el("li", {},
       el("span", { class: "av", "data-avatar": uid || "" }, (name[0] || "?").toUpperCase()),
       el("span", { class: "who" }, name, uid === me.id ? el("small", {}, " (you)") : null),
       el("span", { class: `spend${b == null ? " none" : ""}` }, b == null ? "–" : money(b), el("small", {}, b == null ? "no budget yet" : sets ? "sets the group budget" : "max per person")),
-      el("span", { class: "prefs" }, [f.vibe, PLACES[f.place]?.toLowerCase()].filter(Boolean).join(" · "), status));
+      el("span", { class: "prefs" }, [f.vibe, PLACES[f.place]?.toLowerCase()].filter(Boolean).join(" · "), status, ...rosterActions(uid, f, guest)));
   };
   const rows = [
     ...ids.map((uid) => row({ uid, name: displayName(uid), f: S.friends[uid] })),
@@ -880,7 +911,7 @@ $("me-form").addEventListener("submit", async (e) => {
   if (!v || !pl) { say("Pick a vibe and indoors or outdoors."); return; }
   if (b != null && !(b > 0)) { say("The budget needs to be more than zero."); return; }
   try {
-    await saveMine({ vibe: v.value, place: pl.value, budgetMax: b });
+    await saveMine({ vibe: v.value, place: pl.value, budgetMax: b, active: true });
     meDirty = false; say(b == null ? "Saved. Add a budget so the group can agree one." : "Saved."); render();
   } catch (err) { say(writeError(err)); }
 });
@@ -953,7 +984,7 @@ const BOT_TOOLS = [
     inputSchema: { type: "object", properties: { vibe: { type: "string", enum: VIBES }, place: { type: "string", enum: Object.keys(PLACES) }, budget_max: { type: "number", minimum: 1 } }, required: ["vibe", "place"] },
     async execute(a) {
       if (!VIBES.includes(a.vibe) || !PLACES[a.place]) throw new Error("vibe or place not recognised");
-      const patch = { vibe: a.vibe, place: a.place };
+      const patch = { vibe: a.vibe, place: a.place, active: true };
       if (a.budget_max != null) { const b = Math.round(Number(a.budget_max)); if (!(b > 0)) throw new Error("budget_max must be a positive number"); patch.budgetMax = b; }
       await saveMine(patch); render();
       return { saved: S.friends[me.id], groupBudget: budgetStatus().limit };
@@ -1004,7 +1035,7 @@ const BOT_TOOLS = [
         ideas: r.ideas.map(({ name, costPP, reasons, note }) => ({ name, costPerPerson: costPP, reasons, note })), hiddenOverBudget: r.overBudget,
         budget: { perPerson: bs.limit, currency: cur(), agreedByEveryone: bs.allAgreed, needBudget: bs.missing.map(nameOf),
           needToAgree: members().filter((m) => budgetOf(m) != null && !bs.agreed.includes(m.uid)).map((m) => nameOf(m.uid)) },
-        voting: phase() === "planning" ? null : { rated: ballots().map((b) => nameOf(b.uid)), winner: showingResults() ? consensus(plan().frozen || [], ballots()).winner?.name ?? null : null,
+        voting: phase() === "planning" ? null : { rated: ballots().map((b) => nameOf(b.uid)), winner: showingResults() ? consensus(frozenList(), ballots()).winner?.name ?? null : null,
           in: so.in.map(nameOf), notHappy: so.out.map(nameOf) } };
     } },
   { name: "start_vote", description: "Freeze the top ideas and open voting. Only works once everyone has agreed the budget.",
