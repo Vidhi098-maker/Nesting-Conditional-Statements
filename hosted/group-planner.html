@@ -143,6 +143,18 @@
   .decided .big { font: 800 clamp(24px, 4.5vw, 34px)/1.1 var(--display); }
 
   /* People */
+  .roster { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+  .roster li { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--bg); }
+  .roster .av { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; background: var(--surface-2); grid-row: span 2; overflow: hidden; }
+  .roster .av img { width: 100%; height: 100%; }
+  .roster .who { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .roster .who small { font-weight: 400; color: var(--muted); }
+  .roster .prefs { font-size: 13px; color: var(--muted); grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+  .roster .spend { grid-column: 3; grid-row: 1 / span 2; text-align: right; font: 800 20px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+  .roster .spend small { display: block; font: 500 11.5px var(--body); color: var(--muted); }
+  .roster .spend.none { font: 500 13px var(--body); color: var(--muted); }
+  .roster-foot { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; }
+  .roster-foot b { font-variant-numeric: tabular-nums; }
   .people { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .person { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--bg); font-size: 13.5px; }
   .person img { width: 24px; height: 24px; border-radius: 50%; }
@@ -200,7 +212,8 @@
 
       <section class="panel">
         <div class="panel-head"><h2>Who's in the plan</h2><span class="muted" id="people-count"></span></div>
-        <div class="people" id="people"></div>
+        <ul class="roster" id="people"></ul>
+        <div class="roster-foot" id="people-foot" hidden></div>
         <form class="grid" id="me-form">
           <div class="full"><strong>Your preferences</strong> <span class="muted">· these shape the ranking and the budget</span></div>
           <div class="full f">Ideal vibe<div class="seg" id="me-vibe"></div></div>
@@ -746,23 +759,38 @@ function renderResults(box) {
       !everyoneIn && winner ? el("span", { class: "blocker" }, "It's decided once everyone taps \"I'm in\".") : null));
 }
 
+/* Everyone who has joined (saved preferences), with what they can spend. */
+function displayName(uid) { return S.names[uid] || (uid === me.id ? me.name : "") || "Someone"; }
 function renderPeople() {
-  const ids = Object.keys(S.friends), bs = budgetStatus();
-  const chips = ids.map((uid) => {
-    const f = S.friends[uid];
-    const bits = [f.vibe, PLACES[f.place]?.toLowerCase(), budgetOf(f) != null ? `up to ${money(f.budgetMax)}` : "no budget yet"].filter(Boolean);
-    return el("span", { class: "person" }, el("span", { class: "dot", "data-avatar": uid }, "•"), el("span", {}, nameOf(uid)), el("small", {}, bits.join(" · ")));
-  });
-  for (const g of Object.values(S.guests)) {
-    const bits = [g.vibe, PLACES[g.place]?.toLowerCase(), budgetOf(g) != null ? `up to ${money(g.budgetMax)}` : null, "added by chat"].filter(Boolean);
-    chips.push(el("span", { class: "person" }, el("span", { class: "dot" }, "+"), el("span", {}, g.name), el("small", {}, bits.join(" · "))));
-  }
-  $("people").replaceChildren(...(chips.length ? chips : [el("span", { class: "muted" }, "Nobody yet. Save your preferences below to join.")]));
-  $("people-count").textContent = chips.length ? `${chips.length} in the plan` : "";
+  const bs = budgetStatus();
+  const ids = Object.keys(S.friends).sort((a, b) => (a === me.id ? -1 : b === me.id ? 1 : displayName(a).localeCompare(displayName(b))));
+  const row = ({ uid, name, f, guest }) => {
+    const b = budgetOf(f);
+    const sets = b != null && b === bs.limit;
+    const status = guest ? el("span", { class: "tag" }, "added in chat")
+      : b == null ? el("span", { class: "tag" }, "no budget yet")
+      : bs.agreed.includes(uid) ? el("span", { class: "tag yes" }, "agreed budget") : el("span", { class: "tag" }, "to agree budget");
+    return el("li", {},
+      el("span", { class: "av", "data-avatar": uid || "" }, (name[0] || "?").toUpperCase()),
+      el("span", { class: "who" }, name, uid === me.id ? el("small", {}, " (you)") : null),
+      el("span", { class: `spend${b == null ? " none" : ""}` }, b == null ? "–" : money(b), el("small", {}, b == null ? "no budget yet" : sets ? "sets the group budget" : "max per person")),
+      el("span", { class: "prefs" }, [f.vibe, PLACES[f.place]?.toLowerCase()].filter(Boolean).join(" · "), status));
+  };
+  const rows = [
+    ...ids.map((uid) => row({ uid, name: displayName(uid), f: S.friends[uid] })),
+    ...Object.values(S.guests).map((g) => row({ uid: null, name: g.name || "Friend", f: g, guest: true })),
+  ];
+  $("people").replaceChildren(...(rows.length ? rows : [el("li", { class: "muted", style: "display:block" }, "Nobody has joined yet. Save your preferences below to join.")]));
+  $("people-count").textContent = rows.length ? `${rows.length} ${rows.length === 1 ? "person has" : "people have"} joined` : "";
+  const foot = $("people-foot");
+  foot.hidden = bs.limit == null;
+  if (bs.limit != null) foot.replaceChildren(
+    el("span", {}, "Group budget (lowest): ", el("b", {}, `${money(bs.limit)} per person`)),
+    el("span", { class: "muted" }, bs.allAgreed ? "Everyone has agreed" : `${bs.agreed.length} of ${members().length} agreed`));
   if (user && ids.length) user.profiles(ids).then((ps) => {
     for (const uid of ids) {
       const slot = $("people").querySelector(`[data-avatar="${CSS.escape(uid)}"]`);
-      if (slot && ps[uid]?.avatarUrl) slot.replaceWith(el("img", { src: ps[uid].avatarUrl, alt: "" }));
+      if (slot && ps[uid]?.avatarUrl && !slot.querySelector("img")) slot.replaceChildren(el("img", { src: ps[uid].avatarUrl, alt: "" }));
     }
   });
 }
