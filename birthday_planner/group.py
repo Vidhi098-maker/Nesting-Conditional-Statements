@@ -3,6 +3,8 @@ a trip...) with a budget everyone agrees to and a vote designed so nobody
 ends up somewhere they hate.
 
 The rules, which the server enforces:
+  - First everyone agrees what's being planned (the kind of plan, the place,
+    the month...). Changing those details means everyone agrees again.
   - Everyone taking part gives the most they can spend per person. The group
     budget is the lowest of those, so nobody is priced out, and ideas above
     it are hidden.
@@ -244,6 +246,7 @@ class GroupPlan:
 
     def __init__(self):
         self.details = {}      # kind, title, place, setting, features, hemisphere, month, currency
+        self.details_version = 0   # bumped on every change; agreements are for one version
         self.phase = "planning"
         self.round = 0
         self.frozen = []       # finalists of the current vote
@@ -285,6 +288,14 @@ class GroupPlan:
         all_agreed = limit is not None and bool(parts) and not missing and len(agreed) == len(parts)
         return {"limit": limit, "missing": missing, "agreed": agreed, "all_agreed": all_agreed}
 
+    def details_agreement(self):
+        """Who has agreed the current plan details."""
+        parts = self.participants()
+        ready = bool(self.kind() and self.details.get("place"))
+        agreed = [uid for uid, p in parts if ready and p.get("details_ok") == self.details_version]
+        return {"version": self.details_version, "agreed": agreed,
+                "all_agreed": ready and bool(parts) and len(agreed) == len(parts)}
+
     def context(self):
         d = self.details
         season = get_season(d["month"], d.get("hemisphere") or "north") if d.get("month") else None
@@ -317,8 +328,8 @@ class GroupPlan:
         return ideas, over, False
 
     def current_phase(self):
-        """The stored phase only holds while everyone agrees the current budget."""
-        if self.phase != "planning" and not self.budget()["all_agreed"]:
+        """The stored phase only holds while everyone agrees the plan and the budget."""
+        if self.phase != "planning" and not (self.details_agreement()["all_agreed"] and self.budget()["all_agreed"]):
             return "planning"
         return self.phase
 
@@ -357,8 +368,11 @@ class GroupPlan:
     def vote_blockers(self):
         parts, b = self.participants(), self.budget()
         out = []
+        d = self.details_agreement()
         if not parts:
             out.append("someone needs to save their preferences")
+        elif not d["all_agreed"]:
+            out.append(f"waiting for {self.names([u for u, _ in parts if u not in d['agreed']])} to agree the plan details")
         elif b["missing"]:
             out.append(f"waiting for {self.names(b['missing'])} to add a budget")
         elif not b["all_agreed"]:
@@ -390,7 +404,9 @@ class GroupPlan:
     def uid_for(self, token):
         return next((u for u, t in self.tokens.items() if t == token), None)
 
-    def set_details(self, fields):
+    def set_details(self, fields, uid=None):
+        """Change the plan details. Any real change means everyone agrees again
+        (budget included); whoever made the change agrees to it."""
         d = dict(self.details)
         if "kind" in fields:
             if fields["kind"] not in KINDS:
@@ -422,7 +438,22 @@ class GroupPlan:
             raise PlanError("Choose the kind of plan and fill in the place.")
         if KINDS[d["kind"]]["catalog"] and not d.get("setting"):
             raise PlanError("Choose the kind of area so the ideas fit.")
-        self.details = d
+        if d != self.details:
+            self.details = d
+            self.details_version += 1
+            for p in self.people.values():
+                p.pop("details_ok", None)
+                p.pop("budget_ok", None)
+        if uid in self.people and self.people[uid].get("vibe") in VIBES:
+            self.people[uid]["details_ok"] = self.details_version
+
+    def agree_details(self, uid, version=None):
+        p = self._participant(uid)
+        if not (self.kind() and self.details.get("place")):
+            raise PlanError("There are no plan details to agree yet.")
+        if version is not None and version != self.details_version:
+            raise PlanError("The plan details just changed. Check them and agree again.")
+        p["details_ok"] = self.details_version
 
     def set_preferences(self, uid, vibe, place, budget_max):
         if uid not in self.people:
@@ -439,6 +470,8 @@ class GroupPlan:
 
     def agree_budget(self, uid, amount=None):
         p, b = self._participant(uid), self.budget()
+        if not self.details_agreement()["all_agreed"]:
+            raise PlanError("Everyone needs to agree the plan details before the budget.")
         if b["limit"] is None:
             raise PlanError("There's no group budget yet.")
         if self.budget_of(p) is None:
@@ -553,7 +586,7 @@ class GroupPlan:
         return "https://www.google.com/maps/search/?api=1&query=" + urllib.parse.quote(query)
 
     def view(self, uid):
-        cur, b = self.currency, self.budget()
+        cur, b, da = self.currency, self.budget(), self.details_agreement()
         parts = dict(self.participants())
         ballots = self.ballots()
         rated = {x["uid"] for x in ballots}
@@ -575,14 +608,15 @@ class GroupPlan:
                 "joined": p.get("vibe") in VIBES, "active": p.get("active", True), "guest": False,
                 "vibe": p.get("vibe"), "place": p.get("place"), "budget_max": bm,
                 "agreed": pid in b["agreed"], "sets_budget": bm is not None and bm == b["limit"],
-                "rated": pid in rated,
+                "agreed_details": pid in da["agreed"], "rated": pid in rated,
                 "signoff": "in" if pid in so["in"] else "out" if pid in so["out"] else None,
             })
         for g in self.guests.values():
             bm = self.budget_of(g)
             people.append({"name": g["name"], "is_you": False, "is_host": False, "id": None, "joined": True,
                            "active": True, "guest": True, "vibe": g["vibe"], "place": g["place"], "budget_max": bm,
-                           "agreed": False, "sets_budget": bm is not None and bm == b["limit"], "rated": False, "signoff": None})
+                           "agreed": False, "sets_budget": bm is not None and bm == b["limit"], "agreed_details": False,
+                           "rated": False, "signoff": None})
 
         rows, winner, decided = self.result()
         me = self.people.get(uid)
@@ -597,6 +631,8 @@ class GroupPlan:
                     "vibe": me.get("vibe"), "place": me.get("place"), "budget_max": self.budget_of(me),
                     "active": me.get("active", True)} if me else None,
             "people": people,
+            "plan_agreement": {"version": da["version"], "all_agreed": da["all_agreed"], "agreed": len(da["agreed"]),
+                               "taking_part": len(parts), "you_agreed": uid in da["agreed"]},
             "budget": {"limit": b["limit"], "all_agreed": b["all_agreed"], "agreed": len(b["agreed"]),
                        "taking_part": len(parts), "missing": len(b["missing"])},
             "ideas": [idea_view(i) for i in ideas], "over_budget": over, "needs_area": needs_area,
@@ -624,6 +660,7 @@ class GroupPlan:
                        for uid, p in self.participants()]
                       + [{"name": g["name"], "vibe": g["vibe"], "place": g["place"],
                           "maxPerPerson": self.budget_of(g), "notUsingApp": True} for g in self.guests.values()],
+            "planDetailsAgreedByEveryone": self.details_agreement()["all_agreed"],
             "groupBudgetPerPerson": b["limit"], "budgetAgreedByEveryone": b["all_agreed"],
             "ideas": [{"name": i["name"], "costPerPerson": i["cost_pp"]} for i in ideas],
             "voteBlockers": self.vote_blockers(),

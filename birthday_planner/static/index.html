@@ -263,7 +263,7 @@
       </section>
 
       <section class="panel">
-        <div class="panel-head"><h2>What we're planning</h2><span class="muted">Anyone in the group can edit this</span></div>
+        <div class="panel-head"><h2>What we're planning</h2><span class="muted">Anyone can edit this, then everyone agrees it again</span></div>
         <form class="grid" id="details-form">
           <label class="f">Kind of plan<select id="kind"></select></label>
           <label class="f">Name it<input type="text" id="ptitle" maxlength="60" placeholder="e.g. Sam's birthday"></label>
@@ -409,7 +409,7 @@ function renderHeader() {
 function renderSteps() {
   const b = S.budget, r = S.results, so = r?.signoff;
   const steps = [
-    ["What & where", S.details.kind && S.details.place ? "set" : "to do", !!(S.details.kind && S.details.place)],
+    ["Plan agreed", S.details.kind && S.details.place ? `${S.plan_agreement.agreed} of ${S.plan_agreement.taking_part}` : "to do", S.plan_agreement.all_agreed],
     ["Everyone's in", `${b.taking_part} joined`, b.taking_part > 0 && b.missing === 0],
     ["Budget agreed", b.limit == null ? "no budgets yet" : `${b.agreed} of ${b.taking_part}`, b.all_agreed],
     ["Vote", S.phase === "planning" ? "not started" : `${S.rated} of ${b.taking_part}`, !!r],
@@ -435,12 +435,30 @@ function ideaRow(s, i) {
     thumbs, el("div", { class: "meta" }, links));
 }
 
+function planCard() {
+  const pa = S.plan_agreement, d = S.details, you = S.you || {};
+  const tags = S.people.filter((p) => p.joined && p.active && !p.guest).map((p) =>
+    el("span", { class: `tag ${p.agreed_details ? "yes" : ""}` }, `${p.is_you ? "You" : p.name} · ${p.agreed_details ? "agreed" : "to confirm"}`));
+  let action;
+  if (!you.taking_part) action = el("span", { class: "muted" }, "Save your preferences below to take part.");
+  else if (pa.you_agreed) action = el("span", { class: "tag yes" }, "You agreed to this plan");
+  else action = el("button", { class: "btn good small", onclick: () => act("agree-details", { version: pa.version }).catch(say) }, "I agree to this plan");
+  const facts = [d.kind_label, d.title, d.kind === "trip" ? `from ${d.place}` : d.place, d.month ? MONTHS[d.month - 1] : "month not set", `${d.currency} budget`].filter(Boolean);
+  return el("div", { class: "budget" },
+    el("div", { class: "amount", style: "font-size:24px" }, pa.all_agreed ? "✓" : `${pa.agreed}/${pa.taking_part}`, el("small", {}, "agreed")),
+    el("div", {}, el("strong", {}, pa.all_agreed ? "Plan agreed by everyone" : "Does everyone agree on the plan?"),
+      el("div", { class: "muted", style: "font-size:13px" }, facts.join(" · ")),
+      el("div", { class: "muted", style: "font-size:13px" }, pa.all_agreed ? "Changing any of this means everyone agrees again." : "Everyone agrees this first, then the budget. To change it, edit \"What we're planning\" below.")),
+    el("div", { class: "actions" }, el("div", { class: "agree" }, tags), action));
+}
+
 function budgetCard() {
   const b = S.budget, you = S.you || {};
   const tags = S.people.filter((p) => p.joined && p.active && !p.guest).map((p) =>
     el("span", { class: `tag ${p.agreed ? "yes" : ""}` }, `${p.is_you ? "You" : p.name} · ${p.budget_max == null ? "no budget yet" : p.agreed ? "agreed" : "to confirm"}`));
   let action;
   if (!you.taking_part) action = el("span", { class: "muted" }, "Save your preferences below to take part.");
+  else if (!S.plan_agreement.all_agreed) action = el("span", { class: "muted" }, "Once everyone agrees the plan, you can agree the budget.");
   else if (you.budget_max == null) action = el("span", { class: "muted" }, "Add the most you can spend in your preferences below.");
   else if (you.agreed) action = el("span", { class: "tag yes" }, `You agreed to ${money(b.limit)} per person`);
   else action = el("button", { class: "btn good small", onclick: () => act("agree", { amount: b.limit }).catch(say) }, `I agree to ${money(b.limit)} per person`);
@@ -474,7 +492,7 @@ function addIdeaForm() {
 
 let stageKey = "";
 function renderStage() {
-  const key = JSON.stringify([S.phase, S.paused, S.ideas, S.finalists, S.results, S.budget, S.people, S.you, S.details, S.vote_blockers, myRatings]);
+  const key = JSON.stringify([S.plan_agreement, S.phase, S.paused, S.ideas, S.finalists, S.results, S.budget, S.people, S.you, S.details, S.vote_blockers, myRatings]);
   const box = $("stage");
   if (key === stageKey) return;
   if (S.phase === "planning" && box.querySelector("details.add[open]") && $("ni-name")?.value.trim()) return; // don't wipe a half-typed idea
@@ -496,8 +514,9 @@ function renderStage() {
   const blockers = S.vote_blockers;
   put(box, 
     el("div", { class: "panel-head" }, el("h2", {}, "Ideas"), el("span", { class: "muted" }, `Ranked for ${n} ${n === 1 ? "person" : "people"}`)),
+    planCard(),
     budgetCard(),
-    S.paused ? el("p", { class: "paused" }, "Voting is paused until everyone agrees the current budget. Ratings already given are kept.") : null,
+    S.paused ? el("p", { class: "paused" }, "Voting is paused until everyone agrees the current plan and budget. Ratings already given are kept.") : null,
     el("p", { class: "muted", style: "margin:12px 0 0" }, `👍 pulls similar ideas up, 👎 rules one out.${S.over_budget ? ` ${S.over_budget} idea${S.over_budget === 1 ? " is" : "s are"} hidden for going over budget.` : ""}`),
     list, addIdeaForm(),
     el("div", { class: "vote-bar" },

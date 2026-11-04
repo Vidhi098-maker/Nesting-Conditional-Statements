@@ -66,6 +66,11 @@ class WebAppTests(unittest.TestCase):
         alex("preferences", vibe="chill", place="either", budget_max=800)
         ana("preferences", vibe="adventurous", place="outdoor", budget_max=650)
         ben("preferences", vibe="party", place="either", budget_max=900)
+        self.assertIn("agree the plan details", alex("agree", amount=650)[1]["error"])
+        version = self.as_("Ana")[1]()["plan_agreement"]["version"]
+        for p in (alex, ana, ben):
+            self.assertEqual(p("agree-details", version=version)[0], 200)
+        self.assertTrue(self.as_("Ana")[1]()["plan_agreement"]["all_agreed"])
         for name, cost in (("4 days in Krakow", 450), ("Porto long weekend", 520), ("Dolomites hike", 780)):
             self.assertEqual(alex("idea", idea=name, cost_pp=cost, vibes=["chill"])[0], 200)
 
@@ -107,6 +112,7 @@ class WebAppTests(unittest.TestCase):
         alex("details", kind="trip", place="London")
         for p in (alex, ana, ben):
             p("preferences", vibe="chill", place="either", budget_max=500)
+            p("agree-details")
         ben_id = next(p["id"] for p in self.as_("Alex")[1]()["people"] if p["name"] == "Ben")
         self.assertEqual(ana("active", person=ben_id, active=False)[0], 400)
         self.assertEqual(alex("active", person=ben_id, active=False)[0], 200)

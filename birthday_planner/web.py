@@ -156,7 +156,9 @@ class App:
             plan = room.plan
             if action == "details":
                 fields = {k: data[k] for k in ("kind", "title", "place", "setting", "features", "hemisphere", "month", "currency") if k in data}
-                plan.set_details(fields)
+                plan.set_details(fields, uid)
+            elif action == "agree-details":
+                plan.agree_details(uid, data.get("version"))
             elif action == "preferences":
                 plan.set_preferences(uid, data.get("vibe"), data.get("place"), data.get("budget_max"))
             elif action == "agree":

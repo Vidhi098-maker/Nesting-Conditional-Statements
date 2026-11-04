@@ -31,6 +31,8 @@ trips, place is where people travel from.
 - set_preferences: a sender's vibe, indoor/outdoor preference and the most they can spend per \
 person (a number in the plan's currency). Only for people who wrote in this batch, and only \
 what they said themselves.
+- agree_plan: ONLY when that sender clearly says they're happy with the plan details. Everyone \
+must agree the details before the budget; changing details means everyone agrees again.
 - agree_budget: ONLY when that sender clearly says they accept the current group budget. Never \
 agree for anyone else.
 - add_friend: preferences for someone mentioned who isn't using the app.
@@ -66,6 +68,8 @@ TOOLS = [
          "person": PERSON, "vibe": {"type": "string", "enum": list(VIBES)},
          "place": {"type": "string", "enum": list(PLACE_PREFS)}, "budget_max": {"type": "number", "minimum": 1}},
          "required": ["person", "vibe", "place"]}},
+    {"name": "agree_plan", "description": "Record that a sender agrees the current plan details. Only when they said so themselves.",
+     "input_schema": {"type": "object", "properties": {"person": PERSON}, "required": ["person"]}},
     {"name": "agree_budget", "description": "Record that a sender accepts the current group budget. Only when they said so themselves.",
      "input_schema": {"type": "object", "properties": {"person": PERSON}, "required": ["person"]}},
     {"name": "add_friend", "description": "Save preferences for a friend who was mentioned but isn't using the app.",
@@ -124,13 +128,17 @@ class GroupBot:
         return self.room.plan
 
     def tool_set_plan(self, **fields):
-        self.plan.set_details(fields)
+        self.plan.set_details(fields)  # the bot's change needs everyone to agree it
         return json.dumps({"saved": self.plan.details, "season": self.plan.context()["season"]})
 
     def tool_set_preferences(self, person, vibe, place, budget_max=None):
         uid = self._sender(person)
         self.plan.set_preferences(uid, vibe, place, budget_max)
         return json.dumps({"saved": True, "groupBudget": self.plan.budget()["limit"]})
+
+    def tool_agree_plan(self, person):
+        self.plan.agree_details(self._sender(person))
+        return "Agreed to the plan details."
 
     def tool_agree_budget(self, person):
         uid = self._sender(person)

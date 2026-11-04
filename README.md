@@ -81,6 +81,9 @@ The same group planner as the hosted page, run on your own server:
   anything else the planner bot adds concrete options with estimated costs
   (it can web-search current prices and pin real venues), and anyone can add
   their own.
+- **The plan comes first:** everyone agrees what's being planned (kind, place,
+  month...) before anything else. Whoever saves the details agrees to them;
+  any change means everyone agrees again, budget included.
 - **A budget everyone agrees:** each person gives the most they can spend per
   person; the group budget is the lowest. Everyone agrees that exact amount
   before voting opens, and has to agree again if it changes.

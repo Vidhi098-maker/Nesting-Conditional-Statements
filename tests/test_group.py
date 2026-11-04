@@ -21,6 +21,8 @@ def plan_with(people, kind="trip", currency="£", **details):
         plan.join(uid, name)
         plan.set_preferences(uid, vibe, place, budget)
     plan.set_details({"kind": kind, "place": "London", "currency": currency, **details})
+    for uid in ids.values():
+        plan.agree_details(uid)
     return plan, ids
 
 
@@ -66,6 +68,43 @@ class BudgetTests(unittest.TestCase):
         self.assertTrue(self.plan.budget()["all_agreed"])
 
 
+class PlanAgreementTests(unittest.TestCase):
+    def setUp(self):
+        self.plan = GroupPlan()
+        self.ids = {}
+        for name in ("Alex", "Ana"):
+            self.ids[name] = f"u:{name}"
+            self.plan.join(self.ids[name], name)
+            self.plan.set_preferences(self.ids[name], "chill", "either", 500)
+
+    def test_saver_agrees_and_others_must_too(self):
+        self.plan.set_details({"kind": "trip", "place": "London"}, self.ids["Alex"])
+        d = self.plan.details_agreement()
+        self.assertEqual((d["agreed"], d["all_agreed"]), ([self.ids["Alex"]], False))
+        with self.assertRaisesRegex(PlanError, "agree the plan details before the budget"):
+            self.plan.agree_budget(self.ids["Alex"])
+        self.assertIn("waiting for Ana to agree the plan details", self.plan.vote_blockers()[0])
+        self.plan.agree_details(self.ids["Ana"], version=self.plan.details_version)
+        self.assertTrue(self.plan.details_agreement()["all_agreed"])
+
+    def test_changing_details_resets_agreements_and_budget(self):
+        self.plan.set_details({"kind": "trip", "place": "London"}, self.ids["Alex"])
+        self.plan.agree_details(self.ids["Ana"])
+        self.plan.agree_budget(self.ids["Alex"])
+        old = self.plan.details_version
+        self.plan.set_details({"kind": "trip", "place": "London"}, self.ids["Ana"])   # no real change
+        self.assertEqual(self.plan.details_version, old)
+        self.plan.set_details({"place": "Leeds"}, self.ids["Ana"])
+        self.assertEqual(self.plan.details_agreement()["agreed"], [self.ids["Ana"]])
+        self.assertEqual(self.plan.budget()["agreed"], [])
+        with self.assertRaisesRegex(PlanError, "just changed"):
+            self.plan.agree_details(self.ids["Alex"], version=old)
+
+    def test_nothing_to_agree_yet(self):
+        with self.assertRaisesRegex(PlanError, "no plan details"):
+            self.plan.agree_details(self.ids["Alex"])
+
+
 class VotingTests(unittest.TestCase):
     def setUp(self):
         self.plan, self.ids = plan_with({"Alex": ("chill", "either", 800), "Ana": ("adventurous", "outdoor", 650),
@@ -97,6 +136,16 @@ class VotingTests(unittest.TestCase):
         # Ben can leave and rejoin himself.
         self.plan.set_active(self.ids["Ben"], ben, True)
         self.assertEqual(self.plan.current_phase(), "planning")  # paused until Ben agrees
+
+    def test_changing_details_pauses_the_vote(self):
+        self.agree_all()
+        self.plan.start_vote(self.ids["Alex"])
+        self.plan.set_details({"title": "Autumn trip"}, self.ids["Alex"])
+        self.assertEqual(self.plan.current_phase(), "planning")
+        for uid in self.ids.values():
+            self.plan.agree_details(uid)
+        self.agree_all()
+        self.assertEqual(self.plan.current_phase(), "voting")
 
     def test_budget_drop_pauses_the_vote_and_drops_finalists(self):
         self.agree_all()
