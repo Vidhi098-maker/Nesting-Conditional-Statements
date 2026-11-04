@@ -238,13 +238,16 @@ class Planner:
         return "The vote will start once you finish this message."
 
 
-def run_turn(client, planner, messages, system=SYSTEM_PROMPT, tools=TOOLS, max_steps=15):
+def run_turn(client, planner, messages, system=SYSTEM_PROMPT, tools=TOOLS, max_steps=15, fallbacks=True):
     """Send the conversation to Claude, run any tools it calls, and return its reply text.
 
     The caller appends the new user message first. If Claude declines, that
     whole turn is rolled back so the history stays valid for the next one.
     """
     turn_start = len(messages) - 1
+    # Server-side fallback lets another model finish a reply Claude declines;
+    # callers can turn it off for accounts that don't have it.
+    extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"} if fallbacks else {}
     for _ in range(max_steps):
         response = client.beta.messages.create(
             model=MODEL,
@@ -253,8 +256,7 @@ def run_turn(client, planner, messages, system=SYSTEM_PROMPT, tools=TOOLS, max_s
             tools=tools,
             messages=messages,
             output_config={"effort": "medium"},
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
+            **extra,
         )
         messages.append({"role": "assistant", "content": response.content})
 

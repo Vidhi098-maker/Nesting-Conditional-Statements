@@ -168,8 +168,63 @@ class WebAppTests(unittest.TestCase):
         self.new_room("Ana")
         self.as_("Ana")[0]("messages", text="hello")
         self.wait_for_bot()
-        self.assertIn("couldn't reach", self.as_("Ana")[1]()["chat"][-1]["text"])
+        self.assertIn("hit a problem", self.as_("Ana")[1]()["chat"][-1]["text"])
         self.assertEqual(self.app.room(self.code).history, [])
+
+    def test_no_api_key_explains_once_and_everything_else_works(self):
+        self.start(None)
+        self.new_room("Ana")
+        post = self.as_("Ana")[0]
+        post("messages", text="hello")
+        post("messages", text="anyone there?")
+        chat = self.as_("Ana")[1]()["chat"]
+        notes = [m for m in chat if m["sender"] == "App" and "no Claude API key" in m["text"]]
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(post("details", kind="trip", place="London")[0], 200)
+
+    def test_clear_messages_for_api_problems(self):
+        self.start()
+        class Err(Exception):
+            def __init__(self, status, msg):
+                super().__init__(msg)
+                self.status_code = status
+        self.assertIn("no Claude API key", web.bot_problem(TypeError("Could not resolve authentication method.")))
+        self.assertIn("rejected", web.bot_problem(Err(401, "invalid x-api-key")))
+        self.assertIn("out of credit", web.bot_problem(Err(400, "Your credit balance is too low")))
+        self.assertIn("rate limit", web.bot_problem(Err(429, "slow down")))
+
+    def test_retries_without_web_search_or_fallback_when_the_account_lacks_them(self):
+        class Err(Exception):
+            status_code = 400
+
+        class Picky:
+            """Rejects web search and server-side fallback, like an account without them."""
+            def __init__(self):
+                self.beta = self
+                self.messages = self
+                self.calls = []
+
+            def create(self, **kw):
+                self.calls.append(kw)
+                if any(t.get("name") == "web_search" for t in kw["tools"]):
+                    raise Err("web search is not enabled for this organization")
+                if "fallbacks" in kw:
+                    raise Err("fallbacks is not available for this account")
+                from types import SimpleNamespace as NS
+                return NS(content=[NS(type="text", text="Hi! What are we planning?")], stop_reason="end_turn")
+
+        client = Picky()
+        self.start(client)
+        self.new_room("Ana")
+        self.as_("Ana")[0]("messages", text="hello")
+        self.wait_for_bot()
+        self.assertEqual(self.as_("Ana")[1]()["chat"][-1]["text"], "Hi! What are we planning?")
+        self.assertEqual(len(client.calls), 3)
+        self.assertFalse(self.app.web_search or self.app.fallbacks)
+        # Later turns go straight to the working setup.
+        self.as_("Ana")[0]("messages", text="again")
+        self.wait_for_bot()
+        self.assertEqual(len(client.calls), 4)
 
 
 if __name__ == "__main__":

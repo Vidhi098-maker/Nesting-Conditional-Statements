@@ -30,6 +30,30 @@ from .chatbot import run_turn
 from .group import GroupPlan, PlanError
 from .group_bot import GROUP_PROMPT, TOOLS as BOT_TOOLS, GroupBot
 
+NO_KEY = ("The planner bot is switched off because the server has no Claude API key "
+          "(ANTHROPIC_API_KEY). Everything else works; the person running the app can add one.")
+
+
+def bot_problem(err):
+    """Plain-words explanation of why a call to Claude failed."""
+    status = getattr(err, "status_code", None)
+    text = str(err).lower()
+    if isinstance(err, TypeError) and "authentication" in text:
+        return NO_KEY
+    if status == 401:
+        return "The planner bot's Claude API key was rejected. Check ANTHROPIC_API_KEY on the server."
+    if status == 403:
+        return "The planner bot's Claude API key isn't allowed to do this. Check the account in the Claude Console."
+    if status == 404:
+        return "The planner bot's model isn't available to this Claude API key."
+    if status == 400 and "credit" in text:
+        return "The Claude account behind the planner bot is out of credit. Add credit in the Claude Console."
+    if status == 429:
+        return "The planner bot is busy right now (rate limit). Try again in a minute."
+    if status in (500, 502, 503, 529) or "connection" in type(err).__name__.lower():
+        return "The planner bot couldn't reach Claude just now. Try again in a moment."
+    return "Sorry, the planner bot hit a problem answering that. Try again in a moment."
+
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 10_000
 MAX_NAME = 30
@@ -77,8 +101,10 @@ class Room:
 
 class App:
     def __init__(self, client, auth=None):
-        self.client = client
+        self.client = client   # None: no API key, so the planner bot is off
         self.auth = auth       # None: name-only mode for local testing
+        self.web_search = True   # turned off if this account can't use it
+        self.fallbacks = True    # turned off if this account doesn't have server-side fallback
         self.rooms = {}
         self.lock = threading.Lock()
 
@@ -114,8 +140,12 @@ class App:
                 raise ValueError("This chat is full. Start a new plan to keep chatting.")
             name = room.members[uid]
             room.post(name, text, uid)
+            if room.client is None:
+                if not any(m["sender"] == "App" and m["text"] == NO_KEY for m in room.chat):
+                    room.post("App", NO_KEY)
+                return
             room.pending.append((uid, name, text))
-            if room.bot_busy or room.client is None:
+            if room.bot_busy:
                 return  # the running bot worker will pick it up
             room.bot_busy = True
         threading.Thread(target=self.bot_worker, args=(room,), daemon=True).start()
@@ -135,18 +165,38 @@ class App:
             content = f"(Current plan, from the app: {brief})\n" + "\n".join(f"[{n}]: {t}" for _, n, t in batch)
             turn_start = len(room.history)
             room.history.append({"role": "user", "content": content})
-            try:
-                reply = run_turn(room.client, GroupBot(room, senders), room.history,
-                                 system=GROUP_PROMPT, tools=BOT_TOOLS)
-            except Exception as err:  # keep the room alive if the API call fails
-                print(f"[room {room.code}] bot error: {err!r}")
-                del room.history[turn_start:]
-                reply = "Sorry, I couldn't reach my brain just now. Please try again in a moment."
+            reply = self.ask_bot(room, senders, turn_start)
             with room.lock:
                 if reply:
                     room.post("Bot", reply)
                 if room.plan.round != round_before:
                     room.post("App", "Voting is open! Rate every option.")
+
+    def ask_bot(self, room, senders, turn_start):
+        """Run one bot turn. If the account can't use web search or server-side
+        fallback, retry once without it and remember; other failures get a
+        plain-words message in the chat (full details go to the server log)."""
+        for _ in range(3):
+            tools = BOT_TOOLS if self.web_search else [t for t in BOT_TOOLS if t.get("name") != "web_search"]
+            try:
+                return run_turn(room.client, GroupBot(room, senders), room.history,
+                                system=GROUP_PROMPT, tools=tools, fallbacks=self.fallbacks)
+            except Exception as err:  # keep the room alive whatever the API does
+                print(f"[room {room.code}] bot error: {err!r}")
+                del room.history[turn_start + 1:]   # keep the people's messages, drop the failed attempt
+                text = str(err).lower()
+                if getattr(err, "status_code", None) == 400 and self.web_search and "web_search" in text.replace(" ", "_"):
+                    self.web_search = False
+                    print("[bot] web search isn't available to this account; continuing without it")
+                    continue
+                if getattr(err, "status_code", None) == 400 and self.fallbacks and "fallback" in text:
+                    self.fallbacks = False
+                    print("[bot] server-side fallback isn't available to this account; continuing without it")
+                    continue
+                del room.history[turn_start:]
+                return bot_problem(err)
+        del room.history[turn_start:]
+        return "Sorry, the planner bot hit a problem answering that. Try again in a moment."
 
     def act(self, room, uid, action, data):
         """Apply one person's action to the plan. Raises PlanError if it isn't allowed."""
@@ -427,7 +477,10 @@ def main(argv=None):
 
     import anthropic
     auth = build_auth(args.public_url)
-    app = App(anthropic.Anthropic(), auth)
+    has_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+    if not has_key:
+        print("No ANTHROPIC_API_KEY set: the planner bot is off; everything else works.")
+    app = App(anthropic.Anthropic() if has_key else None, auth)
     server = ThreadingHTTPServer((args.host, args.port), make_handler(app))
     if auth:
         names = " and ".join(p.label for p in auth.providers.values())
