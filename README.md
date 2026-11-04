@@ -84,6 +84,51 @@ python3 -m birthday_planner.web        # prints a link friends on your Wi-Fi can
   their own phone, and results show when all have voted (or someone closes
   the vote early).
 
+#### Sign in with Google and Apple
+
+With credentials set, people sign in with their Google or Apple account
+before starting or joining a plan. Their name comes from that account, and
+chat messages, votes and membership are tied to it (a typed name can't
+pretend to be someone else). Without credentials the app falls back to a
+"type your name" mode for local testing.
+
+Copy `.env.example` to `.env`, fill it in, then run:
+
+```bash
+set -a; . ./.env; set +a
+python3 -m birthday_planner.web
+```
+
+**Google** (free):
+1. In the Google Cloud console, create a project and set up the OAuth consent
+   screen (app name, support email, audience "External"). While it's in
+   testing, add your friends as test users, or publish the app.
+2. Create an OAuth client of type **Web application** with:
+   - Authorized JavaScript origin: `https://YOUR-DOMAIN`
+   - Authorized redirect URI: `https://YOUR-DOMAIN/auth/callback/google`
+   (for local testing also add `http://localhost:8000/auth/callback/google`)
+3. Put the client ID and secret in `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+
+**Apple** (needs the paid Apple Developer Program):
+1. Under Certificates, Identifiers & Profiles, create an **App ID** with
+   "Sign in with Apple" turned on.
+2. Create a **Services ID** (this is `APPLE_CLIENT_ID`), turn on Sign in with
+   Apple and configure it with that App ID, your domain (`YOUR-DOMAIN`, no
+   `https://`) and the return URL `https://YOUR-DOMAIN/auth/callback/apple`.
+3. Create a **Key** with Sign in with Apple, download the `.p8` file (you
+   can only download it once) and note its Key ID and your Team ID.
+
+Apple only allows real https domains, not localhost or IP addresses, so the
+app must be reachable at a public https address: host it on a server behind
+HTTPS, or use a tunnel with a fixed hostname for testing.
+
+How it's secured: the standard OpenID Connect code flow with a one-time
+`state` tied to the browser, a `nonce`, and PKCE for Google; ID tokens are
+verified against Google's and Apple's published signing keys, issuer,
+audience and expiry. Sessions are random IDs in `HttpOnly`, `Secure`,
+`SameSite=Lax` cookies, and cross-site posts to the API are refused. See
+`birthday_planner/auth.py`.
+
 Rooms are kept in memory, so they disappear when the server restarts. Anyone
 with the link can chat, and every message uses your Claude API credits, so only
 share it with your group. To let friends join from outside your Wi-Fi, run

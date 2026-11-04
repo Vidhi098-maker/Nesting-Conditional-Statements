@@ -88,7 +88,7 @@ class WebAppTests(unittest.TestCase):
         state = self.wait_for_bot(code)
         self.assertEqual(len(state["suggestions"]), 10)
         self.assertEqual(state["suggestions"][0]["venues"][0]["name"], "Real Spot")
-        self.assertEqual(state["chat"][-1], {"id": len(state["chat"]) - 1, "sender": "Bot",
+        self.assertEqual(state["chat"][-1], {"id": len(state["chat"]) - 1, "sender": "Bot", "uid": None,
                                              "text": "Here are your 10 ideas!"})
         # The bot saw the sender's name.
         self.assertEqual(self.client.requests[0]["messages"][-1]["content"],

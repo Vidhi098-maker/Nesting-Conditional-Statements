@@ -47,6 +47,16 @@
     padding: 20px; margin-top: 24px; display: grid; gap: 12px;
   }
   .row { display: flex; gap: 8px; }
+  .provider {
+    display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none;
+    border-radius: 12px; padding: 12px 16px; font-weight: 600; border: 1px solid var(--border);
+  }
+  .provider svg { width: 18px; height: 18px; flex: none; }
+  .provider.google { background: #ffffff; color: #1f1f1f; border-color: #dadce0; }
+  .provider.apple { background: #000000; color: #ffffff; border-color: #000000; }
+  .provider:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .signed-in { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 15px; }
+  .linkish { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; cursor: pointer; }
   .row > input { flex: 1; }
 
   /* Room screen */
@@ -122,13 +132,26 @@
   <h1>🎂 Birthday Planner</h1>
   <p class="muted">Plan the perfect birthday with friends. Chat with the planner bot, get 10 ideas tailored to where they live, see real local spots, then vote together.</p>
   <div class="card">
-    <label for="name">Your name</label>
-    <input id="name" maxlength="30" autocomplete="given-name" placeholder="e.g. Ana">
+    <div id="signin" class="hidden" style="display:grid;gap:10px">
+      <strong>Sign in to start or join a plan</strong>
+      <div id="providers" style="display:grid;gap:10px"></div>
+      <p class="muted" style="margin:0;font-size:13px">We only use your name to show who's who in the plan.</p>
+    </div>
+    <div id="signed-in" class="signed-in hidden">
+      <span>Signed in as <strong id="me-name"></strong></span>
+      <button class="linkish" id="logout" type="button">Sign out</button>
+    </div>
+    <div id="name-row" style="display:grid;gap:12px">
+      <label for="name">Your name</label>
+      <input id="name" maxlength="30" autocomplete="given-name" placeholder="e.g. Ana">
+    </div>
+    <div id="plan-actions" style="display:grid;gap:12px">
     <button id="create">Start a new plan</button>
     <div class="muted" style="text-align:center">or join one</div>
     <div class="row">
       <input id="code" maxlength="5" placeholder="Room code" autocapitalize="characters">
       <button id="join" class="ghost">Join</button>
+    </div>
     </div>
     <p class="error" id="welcome-error"></p>
   </div>
@@ -166,6 +189,39 @@ const store = {
 };
 
 let me = store.get("bp-name") || "";
+let account = { user: null, providers: [] };   // from /auth/me
+const myId = () => account.user ? account.user.id : `name:${me}`;
+const PROVIDER_ICONS = {
+  google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-5 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>',
+  apple: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.7c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.77-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.82-.81-3-.79-1.54.02-2.96.9-3.76 2.27-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.23-.02 2.01-1.12 2.77-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.38-3.68zM14.1 5.95c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.66 1.37-.58.68-1.09 1.76-.96 2.8 1.02.08 2.05-.52 2.68-1.28z"/></svg>',
+};
+
+async function loadAccount() {
+  try { account = await (await fetch("/auth/me", { cache: "no-store" })).json(); } catch {}
+  const signInOn = account.providers.length > 0;
+  $("#signin").classList.toggle("hidden", !signInOn || !!account.user);
+  $("#signed-in").classList.toggle("hidden", !account.user);
+  $("#name-row").classList.toggle("hidden", signInOn);
+  $("#plan-actions").classList.toggle("hidden", signInOn && !account.user);
+  if (account.user) { me = account.user.name; $("#me-name").textContent = me; }
+  const next = encodeURIComponent(location.pathname + location.search.replace(/[?&]login_error=[^&]*/, ""));
+  $("#providers").replaceChildren(...account.providers.map((p) => {
+    const a = el("a", { class: `provider ${p.name}`, href: `/auth/login/${encodeURIComponent(p.name)}?next=${next}` });
+    a.innerHTML = PROVIDER_ICONS[p.name] || "";
+    a.append(`Continue with ${p.label}`);
+    return a;
+  }));
+  const loginError = new URLSearchParams(location.search).get("login_error");
+  if (loginError) {
+    $("#welcome-error").textContent = loginError;
+    history.replaceState(null, "", location.pathname + (code ? `?room=${code}` : ""));
+  }
+}
+
+$("#logout").onclick = async () => {
+  try { await api("/auth/logout", {}); } catch {}
+  location.reload();
+};
 let code = new URLSearchParams(location.search).get("room") || "";
 let seen = 0;
 let state = null;
@@ -194,6 +250,8 @@ function el(tag, attrs = {}, ...children) {
 }
 
 function readName() {
+  if (account.user) return account.user.name;
+  if (account.providers.length) throw new Error("Please sign in first.");
   const name = $("#name").value.trim();
   if (!name) throw new Error("Please enter your name first.");
   me = name; store.set("bp-name", name);
@@ -244,7 +302,8 @@ $("#composer").onsubmit = async (e) => {
 };
 
 function addMessage(m) {
-  const kind = m.sender === "Bot" ? "bot" : m.sender === "App" ? "app" : m.sender === me ? "me" : "other";
+  const mine = m.uid ? m.uid === myId() : m.sender === me;
+  const kind = m.sender === "Bot" ? "bot" : m.sender === "App" ? "app" : mine ? "me" : "other";
   const who = kind === "app" ? null : el("div", { class: "who" }, kind === "bot" ? "🎈 Planner bot" : m.sender);
   const box = $("#messages");
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
@@ -307,7 +366,7 @@ function renderSide() {
   }
 
   if (s.phase === "voting") {
-    const voted = s.voted.includes(me);
+    const voted = s.you_voted ?? s.voted.includes(me);
     side.append(el("h3", {}, "Vote"),
       el("p", { class: "muted" }, voted ? `Thanks! ${s.voted.length} of ${s.members.length} have voted. You can change your picks until everyone's in.`
                                         : "Tap your top 3 in order: 1st gets 3 points, 2nd 2, 3rd 1."));
@@ -347,11 +406,15 @@ async function poll() {
     if (e.message !== pollError) addMessage({ sender: "App", text: `Connection problem: ${e.message}` });
     pollError = e.message;
     if (e.message === "Room not found.") return;
+    if (e.message === "Please sign in first.") { location.reload(); return; }
   }
   timer = setTimeout(poll, state && state.bot_busy ? 1200 : 2500);
 }
 
-if (code && me) enter(code).catch((e) => { $("#welcome-error").textContent = e.message; });
+loadAccount().then(() => {
+  const canEnter = account.providers.length ? !!account.user : !!me;
+  if (code && canEnter) enter(code).catch((e) => { $("#welcome-error").textContent = e.message; });
+});
 </script>
 </body>
 </html>
