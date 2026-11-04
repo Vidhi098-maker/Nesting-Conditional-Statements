@@ -89,14 +89,21 @@ with the link can chat, and every message uses your Claude API credits, so only
 share it with your group. To let friends join from outside your Wi-Fi, run
 the server somewhere public or use a tunnelling tool.
 
-### Hosted version (no server needed)
+### Hosted group planner (no server needed)
 
-`hosted/birthday-planner.html` is the same planner as a single page published on
-claude.ai. Shared storage keeps the plan, everyone's preferences, likes, votes
-and chat. The planner bot runs on each viewer's own Claude account, and its
-tools are a JavaScript port of `planner.py` that gives the same ranking. Each
-idea links to a map search for nearby places, so the bot never has to name
-venues itself.
+`hosted/group-planner.html` is published on claude.ai and goes beyond birthdays:
+a birthday, a dinner, a day or night out, a trip, or anything else.
+
+- **Ideas:** local plans use the built-in idea catalog (ranked by the same
+  algorithm as `planner.py`). For trips and anything else, the planner bot adds
+  concrete options with estimated costs per person, and anyone can add their own.
+- **Budget everyone agrees:** each person gives the most they can spend per
+  person. The group budget is the lowest of those, so nobody is priced out, and
+  ideas above it are hidden. Every person has to agree it before voting opens.
+- **Voting built for agreement:** everyone rates each finalist from "No way" to
+  "Love it". Any "No way" rules an option out, and the winner is the option the
+  least-happy person likes most (ties go to the higher total).
+- **Sign-off:** it's only decided once everyone taps "I'm in".
 
 ### Tests
 

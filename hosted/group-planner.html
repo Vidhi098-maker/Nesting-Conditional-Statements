@@ -1,0 +1,1075 @@
+<title>Group Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap">
+<style>
+  /* Layout: a planning board. Progress steps on top, the current stage leads the main column, group chat beside it (tabs on phones). */
+  :root {
+    --bg: #f5f4fa; --surface: #ffffff; --surface-2: #eceaf5; --line: #dedbea;
+    --ink: #1d1830; --muted: #6a6480; --accent: #f0532e; --accent-ink: #ffffff;
+    --bot: #ece7ff; --bot-ink: #3b2a8f; --good: #1f8a5b; --good-soft: #dff3e9; --bad: #c2334a; --bad-soft: #fbe3e7;
+    --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+    --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --r: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15121f; --surface: #1f1b2c; --surface-2: #2a2539; --line: #363049;
+      --ink: #f1eef9; --muted: #a59fba; --accent: #ff7552; --accent-ink: #1a0f0a;
+      --bot: #2c2450; --bot-ink: #d9d0ff; --good: #4cc48d; --good-soft: #17352a; --bad: #ff7b8f; --bad-soft: #3d1c25; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15121f; --surface: #1f1b2c; --surface-2: #2a2539; --line: #363049;
+    --ink: #f1eef9; --muted: #a59fba; --accent: #ff7552; --accent-ink: #1a0f0a;
+    --bot: #2c2450; --bot-ink: #d9d0ff; --good: #4cc48d; --good-soft: #17352a; --bad: #ff7b8f; --bad-soft: #3d1c25; color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  * { box-sizing: border-box; }
+  h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .muted { color: var(--muted); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-block: 20px 32px; display: grid; gap: 16px; }
+
+  header.top { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 16px; }
+  header.top h1 { font-size: clamp(26px, 5vw, 40px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+  header.top h1 span { color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  .chip.on { background: var(--ink); color: var(--bg); }
+
+  /* Progress */
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .step { padding: 8px 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; display: grid; gap: 1px; min-width: 0; }
+  .step b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .step.done { background: var(--good-soft); border-color: transparent; }
+  .step.done b::before { content: "✓ "; color: var(--good); }
+  .step.now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+  .tabs { display: none; }
+  .board { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  .col { display: grid; gap: 18px; min-width: 0; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; min-width: 0; }
+  .panel h2 { font-size: 20px; font-weight: 800; }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+
+  .btn { border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 600; background: var(--accent); color: var(--accent-ink); }
+  .btn.ghost { background: var(--surface-2); color: var(--ink); }
+  .btn.good { background: var(--good); color: var(--accent-ink); }
+  .btn.small { padding: 6px 12px; font-size: 13px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .linkbtn { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 0; }
+  .linkbtn:disabled { opacity: .45; cursor: default; }
+
+  /* Forms */
+  form.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  form.grid .full { grid-column: 1 / -1; }
+  label.f, .f { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  input[type=text], input[type=number], select { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-weight: 400; font-size: 15px; }
+  .money { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  .money span { padding-left: 11px; color: var(--muted); font-weight: 600; }
+  .money input { border: 0; background: none; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; color: var(--ink); cursor: pointer; font-weight: 500; }
+  .seg input:checked + label { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .form-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .note { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+  details.add { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 12px; }
+  details.add summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+
+  /* Budget */
+  .budget { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 18px; align-items: center; padding: 14px 16px; border-radius: var(--r); background: var(--bg); margin-top: 10px; }
+  .budget .amount { font: 800 30px/1 var(--display); font-variant-numeric: tabular-nums; grid-row: span 2; }
+  .budget .amount small { font: 500 13px var(--body); color: var(--muted); display: block; margin-top: 4px; }
+  .agree { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 12.5px; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  .tag.yes { background: var(--good-soft); color: var(--good); font-weight: 600; }
+  .tag.no { background: var(--bad-soft); color: var(--bad); font-weight: 600; }
+  .budget .actions { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+
+  /* Ideas */
+  .ideas { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+  .idea { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 2px 12px; align-items: start; padding: 12px 14px; border-radius: var(--r); background: var(--bg); }
+  .rank { grid-row: span 3; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font: 800 15px var(--display); background: var(--surface-2); font-variant-numeric: tabular-nums; }
+  .idea:first-child .rank { background: var(--accent); color: var(--accent-ink); }
+  .idea .name { font-weight: 600; font-size: 16px; }
+  .idea .why { font-size: 13.5px; color: var(--muted); grid-column: 2; }
+  .idea .meta { grid-column: 2; display: flex; gap: 6px 12px; flex-wrap: wrap; font-size: 13px; margin-top: 2px; color: var(--muted); }
+  .idea .meta a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .idea .meta a:hover { text-decoration: underline; }
+  .cost { font-variant-numeric: tabular-nums; text-align: right; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .thumbs { grid-column: 3; grid-row: 2 / span 2; display: flex; gap: 4px; align-self: end; }
+  .thumb { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; width: 34px; height: 32px; font-size: 15px; display: grid; place-items: center; padding: 0; }
+  .thumb[aria-pressed=true].up { background: var(--good); border-color: var(--good); }
+  .thumb[aria-pressed=true].down { background: var(--bad); border-color: var(--bad); }
+  .empty { padding: 24px 8px; text-align: center; color: var(--muted); display: grid; gap: 10px; justify-items: center; }
+  .empty strong { color: var(--ink); font-family: var(--display); font-size: 18px; }
+  .vote-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .blocker { font-size: 13px; color: var(--muted); }
+
+  /* Rating */
+  .rate { display: grid; gap: 8px; padding: 12px 14px; border-radius: var(--r); background: var(--bg); }
+  .rate .name { font-weight: 600; }
+  .faces { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .face { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 6px 2px; display: grid; justify-items: center; gap: 1px; font-size: 20px; line-height: 1.2; }
+  .face small { font-size: 11.5px; color: var(--muted); }
+  .face[aria-pressed=true] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--surface); }
+  .face[aria-pressed=true].veto { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
+
+  /* Results */
+  .winner { padding: 18px; border-radius: var(--r); background: var(--ink); color: var(--bg); display: grid; gap: 4px; }
+  .winner .label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+  .winner .big { font: 800 clamp(22px, 4vw, 30px)/1.15 var(--display); }
+  .winner a { color: inherit; font-weight: 600; }
+  .table-wrap { overflow-x: auto; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td:first-child { white-space: normal; }
+  tr.out td { color: var(--muted); }
+  .signoff { display: grid; gap: 10px; margin-top: 14px; padding: 14px 16px; border-radius: var(--r); background: var(--bg); }
+  .decided { padding: 22px; border-radius: var(--r); background: var(--good-soft); display: grid; gap: 6px; }
+  .decided .big { font: 800 clamp(24px, 4.5vw, 34px)/1.1 var(--display); }
+
+  /* People */
+  .people { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .person { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--bg); font-size: 13.5px; }
+  .person img { width: 24px; height: 24px; border-radius: 50%; }
+  .person .dot { width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); display: grid; place-items: center; font-size: 12px; }
+  .person small { color: var(--muted); }
+
+  /* Chat */
+  .chat { display: flex; flex-direction: column; height: min(78vh, 760px); padding: 0; overflow: hidden; position: sticky; top: calc(12px + env(safe-area-inset-top, 0px)); }
+  .chat .panel-head { padding: 16px 18px 10px; border-bottom: 1px solid var(--line); margin: 0; }
+  .msgs { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .msg { max-width: 88%; display: grid; gap: 2px; }
+  .msg .who { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .msg .body { padding: 9px 13px; border-radius: 14px; background: var(--bg); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.mine { align-self: flex-end; }
+  .msg.mine .who { text-align: right; }
+  .msg.mine .body { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+  .msg.bot .body { background: var(--bot); color: var(--bot-ink); border-bottom-left-radius: 4px; }
+  .msg.thinking .body { font-style: italic; }
+  .composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
+  .composer input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .bot-off { font-size: 12.5px; color: var(--muted); padding: 0 16px 10px; }
+
+  @media (max-width: 860px) {
+    .tabs { display: flex; gap: 6px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 6px; }
+    .tabs button { flex: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 9px; font-weight: 600; color: var(--muted); }
+    .tabs button[aria-selected=true] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .board { grid-template-columns: minmax(0, 1fr); }
+    .board[data-tab=plan] .chat-col, .board[data-tab=chat] .plan-col { display: none; }
+    .chat { position: static; height: calc(100vh - 230px); min-height: 420px; }
+    form.grid { grid-template-columns: minmax(0, 1fr); }
+    .steps { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .step { padding: 6px 7px; }
+    .step b { font-size: 12px; }
+  }
+  @media (max-width: 480px) { .step span { display: none; } .step b { white-space: normal; font-size: 11.5px; line-height: 1.25; } .face small { display: none; } }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1 id="title">Group <span>Planner</span></h1>
+    <div class="chips" id="summary"></div>
+  </header>
+
+  <ol class="steps" id="steps" aria-label="Progress"></ol>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-plan" aria-selected="true">Plan</button>
+    <button role="tab" id="tab-chat" aria-selected="false">Group chat</button>
+  </div>
+
+  <div class="board" id="board" data-tab="plan">
+    <div class="col plan-col">
+      <section class="panel" id="stage" aria-live="polite"></section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Who's in the plan</h2><span class="muted" id="people-count"></span></div>
+        <div class="people" id="people"></div>
+        <form class="grid" id="me-form">
+          <div class="full"><strong>Your preferences</strong> <span class="muted">· these shape the ranking and the budget</span></div>
+          <div class="full f">Ideal vibe<div class="seg" id="me-vibe"></div></div>
+          <div class="f">Indoors or outdoors<div class="seg" id="me-place"></div></div>
+          <label class="f">The most you can spend per person
+            <span class="money"><span class="cur"></span><input type="number" id="me-budget" min="0" step="1" inputmode="numeric" placeholder="e.g. 50"></span>
+          </label>
+          <div class="full form-actions">
+            <button class="btn" type="submit" id="me-save">Save my preferences</button>
+            <span class="note" id="me-note"></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>What we're planning</h2><span class="muted">Anyone in the group can edit this</span></div>
+        <form class="grid" id="loc-form">
+          <label class="f">Kind of plan<select id="kind"></select></label>
+          <label class="f">Name it<input type="text" id="ptitle" maxlength="60" placeholder="e.g. Divahar's birthday"></label>
+          <label class="f"><span id="place-label">Town or city</span><input type="text" id="place" maxlength="60" placeholder="e.g. Hayes, London"></label>
+          <label class="f">Kind of area<select id="setting"></select></label>
+          <label class="f">Month<select id="month"></select></label>
+          <label class="f">Climate<select id="hemi"></select></label>
+          <label class="f">Currency<select id="currency"></select></label>
+          <div class="f">Nearby<div class="seg" id="features"></div></div>
+          <div class="full form-actions">
+            <button class="btn" type="submit" id="loc-save">Save plan details</button>
+            <span class="note" id="loc-note"></span>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="col chat-col">
+      <section class="panel chat">
+        <div class="panel-head"><h2>Group chat</h2><span class="muted">with the planner bot</span></div>
+        <div class="msgs" id="msgs" aria-live="polite"></div>
+        <div class="bot-off" id="bot-off" hidden></div>
+        <form class="composer" id="composer">
+          <input id="text" maxlength="800" autocomplete="off" placeholder="Tell the bot what you'd like…">
+          <button class="btn" type="submit" id="send">Send</button>
+        </form>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- Kinds of plan and the idea catalog ---------- */
+const KINDS = {
+  birthday: { label: "Birthday", place: "Town or city", catalog: true },
+  outing: { label: "Day or night out", place: "Town or city", catalog: true },
+  dinner: { label: "Dinner or meal", place: "Town or city", catalog: true },
+  trip: { label: "Trip or holiday", place: "Travelling from", catalog: false },
+  other: { label: "Something else", place: "Where", catalog: false },
+};
+const ALL = ["city", "suburb", "town", "rural"], URBAN = ["city", "suburb"];
+const FUN = ["birthday", "outing"], FUN_FOOD = ["birthday", "outing", "dinner"];
+const I = (name, vibes, settings, needs, outdoor, cost, maxGroup, search, kinds = FUN, extra = {}) =>
+  ({ name, vibes, settings, needs, outdoor, cost, maxGroup, search, kinds, ...extra });
+const IDEAS = [
+  I("Rooftop dinner with a view", ["fancy", "chill"], ["city"], null, true, 3, 12, "rooftop restaurant", FUN_FOOD),
+  I("Escape room challenge", ["adventurous", "party"], URBAN, null, false, 2, 8, "escape room"),
+  I("Karaoke night in a private booth", ["party"], URBAN, null, false, 2, 15, "karaoke private room"),
+  I("Chef's tasting menu", ["fancy"], ["city"], null, false, 3, 8, "tasting menu restaurant", FUN_FOOD),
+  I("Comedy club show", ["party", "chill"], URBAN, null, false, 2, 12, "comedy club"),
+  I("Live concert or gig", ["party", "adventurous"], ["city"], null, false, 3, 20, "live music venue"),
+  I("Museum or gallery day + cafe", ["chill", "creative"], URBAN, null, false, 1, 10, "museum"),
+  I("Pottery or painting class", ["creative", "chill"], ["city", "suburb", "town"], null, false, 2, 12, "pottery class"),
+  I("Cooking class together", ["creative", "fancy"], URBAN, null, false, 2, 10, "cooking class", FUN_FOOD),
+  I("Bowling and arcade night", ["party", "chill"], ["city", "suburb", "town"], null, false, 1, 20, "bowling alley"),
+  I("Go-kart racing", ["adventurous", "party"], ["suburb", "town"], null, true, 2, 12, "go kart track"),
+  I("Trampoline park", ["adventurous", "party"], URBAN, null, false, 1, 20, "trampoline park"),
+  I("Indoor rock climbing", ["adventurous"], URBAN, null, false, 2, 10, "climbing gym"),
+  I("Spa day", ["chill", "fancy"], ["city", "suburb", "town"], null, false, 3, 6, "day spa"),
+  I("Food market crawl", ["adventurous", "chill"], ["city"], null, true, 1, 10, "food market", FUN_FOOD),
+  I("Themed house party", ["party", "creative"], ALL, null, false, 1, 40, "party supplies"),
+  I("Backyard barbecue", ["chill", "party"], ["suburb", "town", "rural"], null, true, 1, 30, "butcher barbecue", FUN_FOOD),
+  I("Movie marathon sleepover", ["chill"], ALL, null, false, 1, 10, null),
+  I("Board game and pizza night", ["chill", "creative"], ALL, null, false, 1, 12, "board game cafe"),
+  I("Murder mystery dinner at home", ["creative", "party", "fancy"], ALL, null, false, 1, 12, null, FUN_FOOD),
+  I("Picnic in the park", ["chill"], ALL, null, true, 1, 25, "park picnic area", FUN_FOOD),
+  I("Outdoor movie under the stars", ["chill", "creative"], ["suburb", "town", "rural"], null, true, 1, 20, "outdoor cinema"),
+  I("Bonfire and s'mores night", ["chill", "party"], ["town", "rural"], null, true, 1, 25, "fire pit campground"),
+  I("Stargazing trip", ["chill", "adventurous"], ["town", "rural"], null, true, 1, 12, "stargazing spot"),
+  I("Farm visit and fruit picking", ["chill", "creative"], ["town", "rural"], null, true, 1, 20, "pick your own farm"),
+  I("Horse riding trail", ["adventurous"], ["town", "rural"], null, true, 2, 8, "horse riding"),
+  I("Winery or brewery tour", ["fancy", "chill"], ["town", "rural"], null, true, 2, 12, "winery tour"),
+  I("DIY craft party (tie-dye, candles)", ["creative", "party"], ALL, null, false, 1, 15, "craft workshop"),
+  I("Fancy dress-up dinner party", ["fancy", "party"], ALL, null, false, 2, 14, null, FUN_FOOD),
+  I("Scavenger hunt around town", ["adventurous", "creative", "party"], ALL, null, true, 1, 20, "scavenger hunt"),
+  I("Beach day and sunset dinner", ["chill", "party"], ALL, "beach", true, 1, 30, "beach restaurant", FUN_FOOD),
+  I("Surf or paddleboard lesson", ["adventurous"], ALL, "beach", true, 2, 8, "surf school"),
+  I("Sunset boat cruise", ["fancy", "chill"], ALL, "beach", true, 3, 15, "sunset boat cruise"),
+  I("Mountain hike with a summit picnic", ["adventurous", "chill"], ALL, "mountains", true, 1, 12, "hiking trail"),
+  I("Cabin weekend getaway", ["chill", "fancy"], ALL, "mountains", false, 3, 10, "cabin rental"),
+  I("Ski or snowboard day", ["adventurous"], ALL, "mountains", true, 3, 10, "ski resort", FUN, { winterOnly: true }),
+  I("Kayaking on the lake", ["adventurous", "chill"], ALL, "lake", true, 2, 10, "kayak rental"),
+  I("Lakeside camping trip", ["adventurous", "chill"], ALL, "lake", true, 1, 15, "lakeside campground"),
+  I("Ice skating and hot chocolate", ["chill", "party"], ALL, null, true, 1, 20, "ice rink", FUN, { winterOnly: true }),
+  I("Pub with a beer garden", ["chill", "party"], ALL, null, true, 1, 25, "pub beer garden", FUN_FOOD),
+  I("Cocktail bar crawl", ["party", "fancy"], URBAN, null, false, 2, 12, "cocktail bar", FUN),
+  I("Tapas and sharing plates", ["chill", "party"], URBAN, null, false, 2, 14, "tapas restaurant", ["dinner", "birthday"]),
+  I("Korean barbecue", ["party", "adventurous"], URBAN, null, false, 2, 12, "korean bbq", ["dinner", "birthday"]),
+  I("Sushi or omakase", ["fancy"], URBAN, null, false, 3, 8, "sushi restaurant", ["dinner"]),
+  I("Pizza and wine bar", ["chill"], ALL, null, false, 1, 16, "pizzeria", ["dinner"]),
+  I("Curry house feast", ["chill", "party"], ALL, null, false, 1, 20, "indian restaurant", ["dinner", "birthday"]),
+  I("Bottomless brunch", ["party", "chill"], URBAN, null, false, 2, 16, "bottomless brunch", ["dinner", "birthday", "outing"]),
+  I("Potluck dinner at someone's home", ["chill", "creative"], ALL, null, false, 1, 20, null, ["dinner"]),
+  I("Street food night", ["adventurous", "chill"], URBAN, null, true, 1, 15, "street food market", ["dinner"]),
+];
+const VIBES = ["chill", "adventurous", "fancy", "party", "creative"];
+const SETTINGS = ["city", "suburb", "town", "rural"];
+const FEATURES = ["beach", "mountains", "lake"];
+const HEMIS = { north: "North of the tropics", south: "South of the tropics", tropical: "Tropical" };
+const PLACES = { indoor: "Indoors", outdoor: "Outdoors", either: "Either" };
+const CURRENCIES = { "£": "£ Pound", "€": "€ Euro", "$": "$ Dollar", "₹": "₹ Rupee" };
+const COST_GUIDE = { "£": [15, 40, 90], "€": [18, 45, 100], "$": [20, 50, 110], "₹": [800, 2500, 6000] };
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const FACES = [["😣", "No way"], ["😕", "Meh"], ["🙂", "OK"], ["😀", "Good"], ["😍", "Love it"]];
+const CATALOG = Object.fromEntries(IDEAS.map((i) => [i.name, i]));
+
+function defaultCurrency() {
+  const lang = (navigator.language || "").toLowerCase();
+  if (lang.endsWith("-gb") || lang === "en-uk") return "£";
+  if (lang.endsWith("-in")) return "₹";
+  if (/^(de|fr|es|it|nl|pt|fi|el|ga)/.test(lang)) return "€";
+  return "$";
+}
+
+/* ---------- The ranking algorithm ---------- */
+function getSeason(month, hemi) {
+  if (!month) return null;
+  if (hemi === "tropical") return "warm";
+  let s = [12, 1, 2].includes(month) ? "winter" : [3, 4, 5].includes(month) ? "spring" : [6, 7, 8].includes(month) ? "summer" : "autumn";
+  if (hemi === "south") s = { winter: "summer", summer: "winter", spring: "autumn", autumn: "spring" }[s];
+  return s;
+}
+
+function summarizeGroup(members) {
+  const vibes = {}, places = {};
+  for (const m of members) {
+    if (m.vibe) vibes[m.vibe] = (vibes[m.vibe] || 0) + 1;
+    if (m.place) places[m.place] = (places[m.place] || 0) + 1;
+  }
+  return { vibes, places, size: members.length };
+}
+
+function learnWeights(feedback, lookup) {
+  const w = {};
+  for (const [name, signal] of Object.entries(feedback)) {
+    const idea = lookup[name];
+    if (!idea) continue;
+    for (const v of idea.vibes) w[v] = (w[v] || 0) + signal;
+    if (idea.outdoor != null) { const k = idea.outdoor ? "outdoor" : "indoor"; w[k] = (w[k] || 0) + signal; }
+  }
+  return w;
+}
+
+/* Score one idea, or null if it can't happen here. Catalog ideas carry
+   location rules; ideas the group or the bot added only have vibes, a cost
+   and maybe indoor/outdoor. */
+function scoreIdea(idea, ctx, group, w) {
+  const season = ctx.season;
+  if (!idea.custom) {
+    if (!ctx.setting || !idea.settings.includes(ctx.setting)) return null;
+    if (idea.needs && !ctx.features.includes(idea.needs)) return null;
+    if (idea.winterOnly && season !== "winter") return null;
+  }
+  let score = 0; const reasons = [];
+  const n = (o, k) => (o && o[k]) || 0;
+  const vibeVotes = idea.vibes.reduce((t, v) => t + n(group.vibes, v), 0);
+  if (vibeVotes > 0) {
+    score += 3 * vibeVotes;
+    const top = idea.vibes.reduce((a, b) => (n(group.vibes, b) > n(group.vibes, a) ? b : a));
+    reasons.push(`matches the group's ${top} vibe`);
+  }
+  if (idea.outdoor != null) {
+    score += idea.outdoor ? n(group.places, "outdoor") - n(group.places, "indoor") : n(group.places, "indoor") - n(group.places, "outdoor");
+  }
+  if (idea.needs) { score += 3; reasons.push(`makes the most of the nearby ${idea.needs}`); }
+  if (season && idea.outdoor != null && !idea.custom) {
+    if (idea.outdoor) {
+      if (idea.winterOnly) { score += 3; reasons.push("perfect in winter"); }
+      else if (season === "winter") score -= 4;
+      else if (season === "summer" || season === "warm") { score += 2; reasons.push(`great ${season} weather activity`); }
+    } else if (season === "winter") { score += 2; reasons.push("cosy and indoors for winter"); }
+  }
+  if (ctx.limit != null) reasons.push(`within the ${ctx.currency}${ctx.limit} budget`);
+  if (!idea.custom && group.size > idea.maxGroup) score -= 5;
+  else if (!idea.custom && idea.maxGroup >= 20 && group.size > 6) reasons.push("works for big groups");
+  const learned = idea.vibes.reduce((t, v) => t + n(w, v), 0) + (idea.outdoor == null ? 0 : n(w, idea.outdoor ? "outdoor" : "indoor"));
+  if (learned) { score += 2 * learned; if (learned > 0) reasons.push("similar to ideas you liked"); }
+  if (idea.custom) reasons.push(idea.byBot ? "suggested by the planner bot" : "added by the group");
+  return { score, reasons };
+}
+
+function overlap(a, b) {
+  let s = a.vibes.filter((v) => b.vibes.includes(v)).length;
+  if (a.needs && a.needs === b.needs) s += 1;
+  if (a.outdoor != null && a.outdoor === b.outdoor) s += 1;
+  return s;
+}
+
+/* Rank: drop ideas someone disliked or that cost more than the agreed
+   limit, score the rest, then pick greedily with a penalty for being too
+   like ideas already picked so the list stays varied. */
+function suggest(candidates, ctx, group, feedback = {}, count = 10, diversity = 1) {
+  const lookup = Object.fromEntries(candidates.map((c) => [c.name, c]));
+  const w = learnWeights(feedback, lookup);
+  let cands = [], overBudget = 0;
+  candidates.forEach((idea, order) => {
+    if ((feedback[idea.name] || 0) < 0) return;
+    if (ctx.limit != null && idea.costPP > ctx.limit) { overBudget++; return; }
+    const r = scoreIdea(idea, ctx, group, w);
+    if (r) cands.push({ ...r, order, idea });
+  });
+  const picked = [];
+  while (cands.length && picked.length < count) {
+    let best = null, bestKey = null;
+    for (const c of cands) {
+      const pen = picked.length ? Math.max(...picked.map((p) => overlap(c.idea, p.idea))) : 0;
+      const key = [c.score - diversity * pen, -c.order];
+      if (!best || key[0] > bestKey[0] || (key[0] === bestKey[0] && key[1] > bestKey[1])) { best = c; bestKey = key; }
+    }
+    cands = cands.filter((c) => c !== best);
+    picked.push(best);
+  }
+  return { ideas: picked.map((c) => ({ name: c.idea.name, score: c.score, reasons: c.reasons, costPP: c.idea.costPP, custom: !!c.idea.custom, note: c.idea.note || "" })), overBudget };
+}
+
+/* Agreement-first result: an option anyone rated "No way" is out; among
+   the rest, the one whose least-happy person is happiest wins, then the
+   higher total, then the planner's own order. */
+function consensus(finalists, ballots) {
+  const rows = finalists.map((f, rank) => {
+    const scores = ballots.map((b) => b.ratings[f.name]).filter((x) => Number.isInteger(x));
+    return { ...f, rank, scores, min: scores.length ? Math.min(...scores) : null,
+      total: scores.reduce((a, b) => a + b, 0), vetoes: ballots.filter((b) => b.ratings[f.name] === 0).map((b) => b.uid) };
+  });
+  rows.sort((a, b) => (a.vetoes.length > 0) - (b.vetoes.length > 0) || (b.min ?? -1) - (a.min ?? -1) || b.total - a.total || a.rank - b.rank);
+  return { rows, winner: rows.length && rows[0].vetoes.length === 0 ? rows[0] : null };
+}
+
+/* ---------- Shared state ---------- */
+const S = { plan: null, friends: {}, guests: {}, feedback: {}, ratings: {}, ideas: {}, chat: [], names: {} };
+let db = null, user = null, sample = null, me = { id: null }, canWrite = true;
+let myRatings = {}, botBusy = false, pendingBot = null;
+
+const $ = (id) => document.getElementById(id);
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === false || v == null) continue;
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
+  return n;
+}
+
+/* The plan, with older birthday-only plans read as a birthday. */
+function plan() {
+  const p = S.plan || {};
+  const kind = KINDS[p.kind] ? p.kind : p.birthdayPerson ? "birthday" : null;
+  const title = p.title || (p.birthdayPerson ? `${p.birthdayPerson}'s birthday` : "");
+  return { ...p, kind, title, currency: CURRENCIES[p.currency] ? p.currency : defaultCurrency() };
+}
+const cur = () => plan().currency;
+function money(x) { return x == null ? "–" : `${cur()}${Math.round(x).toLocaleString()}`; }
+
+function members() { return Object.entries(S.friends).filter(([, f]) => VIBES.includes(f.vibe)).map(([uid, f]) => ({ uid, ...f })); }
+function everyone() { return [...members(), ...Object.values(S.guests).filter((g) => VIBES.includes(g.vibe))]; }
+function budgetOf(m) { return Number.isFinite(m.budgetMax) && m.budgetMax > 0 ? m.budgetMax : null; }
+
+/* The group budget is the most the tightest budget allows. */
+function budgetStatus() {
+  const people = everyone(), app = members();
+  const withBudget = people.filter((m) => budgetOf(m) != null);
+  const limit = withBudget.length ? Math.min(...withBudget.map(budgetOf)) : null;
+  const missing = app.filter((m) => budgetOf(m) == null).map((m) => m.uid);
+  const agreed = app.filter((m) => limit != null && m.budgetOk === limit).map((m) => m.uid);
+  const allAgreed = limit != null && app.length > 0 && missing.length === 0 && agreed.length === app.length;
+  return { limit, missing, agreed, allAgreed, setBy: withBudget.filter((m) => budgetOf(m) === limit) };
+}
+
+function context() {
+  const p = plan();
+  return { setting: p.setting || null, features: p.features || [], season: getSeason(p.month, p.hemisphere), limit: budgetStatus().limit, currency: p.currency };
+}
+function candidates() {
+  const p = plan(), guide = COST_GUIDE[p.currency] || COST_GUIDE.$;
+  const list = [];
+  if (p.kind && KINDS[p.kind].catalog) for (const i of IDEAS) if (i.kinds.includes(p.kind)) list.push({ ...i, costPP: guide[i.cost - 1], estimate: true });
+  for (const c of Object.values(S.ideas)) {
+    if (!c.name || !Array.isArray(c.vibes)) continue;
+    list.push({ name: String(c.name), vibes: c.vibes.filter((v) => VIBES.includes(v)), outdoor: typeof c.outdoor === "boolean" ? c.outdoor : null,
+      costPP: Number(c.costPP) || 0, custom: true, byBot: !!c.byBot, note: c.note || "", search: c.search || c.name, settings: ALL, needs: null, kinds: [] });
+  }
+  return list;
+}
+function groupFeedback() {
+  const sum = {};
+  for (const f of Object.values(S.feedback)) for (const [k, v] of Object.entries(f.ideas || {})) sum[k] = (sum[k] || 0) + Math.sign(v);
+  return Object.fromEntries(Object.entries(sum).filter(([, v]) => v).map(([k, v]) => [k, Math.sign(v)]));
+}
+function ranking() {
+  const p = plan();
+  if (!p.kind) return { ideas: [], overBudget: 0 };
+  if (KINDS[p.kind].catalog && !p.setting) return { ideas: [], overBudget: 0, needsArea: true };
+  return suggest(candidates(), context(), summarizeGroup(everyone()), groupFeedback());
+}
+
+function phase() { return plan().phase || "planning"; }
+function round() { return plan().round || 0; }
+function ballots() {
+  return Object.entries(S.ratings).filter(([uid, r]) => r.round === round() && r.ratings && S.friends[uid]).map(([uid, r]) => ({ uid, ratings: r.ratings }));
+}
+function allRated() { const b = ballots(); return members().length > 0 && members().every((m) => b.some((x) => x.uid === m.uid)); }
+function showingResults() { return phase() === "results" || (phase() === "voting" && allRated()); }
+function signoffs() {
+  const out = { in: [], out: [], waiting: [] };
+  for (const m of members()) {
+    const s = m.signoff;
+    if (s && s.round === round()) (s.in ? out.in : out.out).push(m.uid); else out.waiting.push(m.uid);
+  }
+  return out;
+}
+function nameOf(uid) { return uid === me.id ? "You" : S.names[uid] || "Someone"; }
+function names(uids) { return uids.map((u) => (u === me.id ? "you" : nameOf(u))).join(", "); }
+
+/* ---------- Writes (also applied locally so the bot's next tool call sees them) ---------- */
+async function savePlan(patch) {
+  const next = { ...(S.plan || {}), ...patch, updatedAt: Date.now() };
+  S.plan = next;
+  await db.doc("plan/main").set(next);
+}
+async function saveMine(patch) {
+  const next = { ...(S.friends[me.id] || {}), ...patch };
+  S.friends[me.id] = next;
+  await db.doc(`friends/${me.id}`).set(next);
+}
+async function saveFeedback(name, signal) {
+  const mine = { ...((S.feedback[me.id] || {}).ideas || {}) };
+  if (signal) mine[name] = signal; else delete mine[name];
+  S.feedback[me.id] = { ideas: mine };
+  await db.doc(`feedback/${me.id}`).set({ ideas: mine });
+}
+async function addIdea(idea) {
+  const id = slug(idea.name);
+  S.ideas[id] = idea;
+  await db.doc(`ideas/${id}`).set(idea);
+}
+function slug(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "idea"; }
+function writeError(err) {
+  if (err?.code === "invalid_argument") { canWrite = false; return "You have view-only access, so this can't be saved."; }
+  if (err?.code === "quota_exceeded") return "This plan's storage is full.";
+  return "Couldn't save just now. Try again in a moment.";
+}
+function say(t) { $("me-note").textContent = t; }
+
+/* ---------- Rendering ---------- */
+function renderHeader() {
+  const p = plan(), ctx = context(), bs = budgetStatus();
+  $("title").replaceChildren(...(p.title ? [el("span", {}, p.title)] : ["Group ", el("span", {}, "Planner")]));
+  const chips = [];
+  if (p.kind) chips.push(el("span", { class: "chip on" }, KINDS[p.kind].label));
+  if (p.place) chips.push(el("span", { class: "chip" }, p.kind === "trip" ? `from ${p.place}` : p.place));
+  if (p.month) chips.push(el("span", { class: "chip" }, `${MONTHS[p.month - 1]}${ctx.season ? ` · ${ctx.season}` : ""}`));
+  if (bs.limit != null) chips.push(el("span", { class: "chip" }, `${money(bs.limit)} per person${bs.allAgreed ? " · agreed" : ""}`));
+  $("summary").replaceChildren(...chips);
+}
+
+function renderSteps() {
+  const p = plan(), bs = budgetStatus(), ms = members(), ph = phase(), so = signoffs();
+  const decided = showingResults() && ms.length > 0 && so.in.length === ms.length && consensus(p.frozen || [], ballots()).winner;
+  const steps = [
+    ["What & where", p.kind && p.place ? "set" : "to do", !!(p.kind && p.place)],
+    ["Everyone's in", `${ms.length} joined`, ms.length > 0 && bs.missing.length === 0],
+    ["Budget agreed", bs.limit == null ? "no budgets yet" : `${bs.agreed.length} of ${ms.length}`, bs.allAgreed],
+    ["Vote", ph === "planning" ? "not started" : `${ballots().length} of ${ms.length}`, showingResults()],
+    ["All happy", `${so.in.length} of ${ms.length} in`, !!decided],
+  ];
+  const now = steps.findIndex((s) => !s[2]);
+  $("steps").replaceChildren(...steps.map(([label, sub, done], i) =>
+    el("li", { class: `step${done ? " done" : ""}${i === now ? " now" : ""}` }, el("b", {}, label), el("span", {}, sub))));
+}
+
+function mapsLink(idea) {
+  const p = plan();
+  const term = idea.search || (idea.custom ? idea.name : null);
+  if (!term || !p.place) return null;
+  const q = encodeURIComponent(p.kind === "trip" ? term : `${term} near ${p.place}`);
+  return el("a", { href: `https://www.google.com/maps/search/?api=1&query=${q}`, target: "_blank", rel: "noopener noreferrer" }, p.kind === "trip" ? "See on map ↗" : "Find places nearby ↗");
+}
+function lookupIdea(name) { return candidates().find((c) => c.name === name) || CATALOG[name] || {}; }
+
+function ideaRow(s, i) {
+  const mine = ((S.feedback[me.id] || {}).ideas || {})[s.name] || 0;
+  const thumbs = me.id ? el("div", { class: "thumbs" },
+    el("button", { class: "thumb up", "aria-pressed": String(mine > 0), "aria-label": `Like ${s.name}`, onclick: () => react(s.name, mine > 0 ? 0 : 1) }, "👍"),
+    el("button", { class: "thumb down", "aria-pressed": String(mine < 0), "aria-label": `Rule out ${s.name}`, onclick: () => react(s.name, mine < 0 ? 0 : -1) }, "👎")) : null;
+  const est = !s.custom || lookupIdea(s.name).byBot;
+  return el("li", { class: "idea" },
+    el("div", { class: "rank" }, String(i + 1)),
+    el("div", { class: "name" }, s.name),
+    el("div", { class: "cost", title: est ? "Estimated cost per person" : "Cost per person" }, `${est ? "~" : ""}${money(s.costPP)} pp`),
+    el("div", { class: "why" }, [s.note, (s.reasons || []).join(" · ")].filter(Boolean).join(" — ") || "a solid all-rounder"),
+    thumbs,
+    el("div", { class: "meta" }, mapsLink(lookupIdea(s.name))));
+}
+
+function budgetCard() {
+  const bs = budgetStatus(), ms = members(), mine = S.friends[me.id];
+  const tags = ms.map((m) => {
+    const st = budgetOf(m) == null ? ["", "no budget yet"] : bs.agreed.includes(m.uid) ? ["yes", "agreed"] : ["", "to confirm"];
+    return el("span", { class: `tag ${st[0]}` }, `${nameOf(m.uid)} · ${st[1]}`);
+  });
+  const iAgreed = bs.agreed.includes(me.id);
+  let actions;
+  if (!mine || !VIBES.includes(mine.vibe)) actions = el("span", { class: "muted" }, "Save your preferences below to take part.");
+  else if (budgetOf(mine) == null) actions = el("span", { class: "muted" }, "Add the most you can spend in your preferences below.");
+  else if (iAgreed) actions = el("span", { class: "tag yes" }, `You agreed to ${money(bs.limit)} per person`);
+  else actions = el("button", { class: "btn good small", onclick: () => saveMine({ budgetOk: bs.limit }).then(render).catch((e) => say(writeError(e))) }, `I agree to ${money(bs.limit)} per person`);
+  const setters = bs.setBy.map((m) => (m.uid ? nameOf(m.uid) : m.name));
+  return el("div", { class: "budget" },
+    el("div", { class: "amount" }, bs.limit == null ? "–" : money(bs.limit), el("small", {}, "per person")),
+    el("div", {}, el("strong", {}, bs.allAgreed ? "Budget agreed by everyone" : "Group budget"),
+      el("div", { class: "muted", style: "font-size:13px" }, bs.limit == null ? "Everyone adds the most they can spend. The group budget is the lowest, so nobody is priced out."
+        : `The lowest budget in the group${setters.length ? ` (${setters.join(", ")})` : ""}, so nobody is priced out. Ideas above it are hidden.`)),
+    el("div", { class: "actions" }, el("div", { class: "agree" }, tags), actions));
+}
+
+function addIdeaForm() {
+  const form = el("form", { class: "grid", id: "idea-form" },
+    el("label", { class: "f full" }, "Idea", el("input", { type: "text", id: "idea-name", maxlength: "70", placeholder: plan().kind === "trip" ? "e.g. 4 days in Kraków" : "e.g. Crazy golf and burgers" })),
+    el("label", { class: "f" }, "Cost per person", el("span", { class: "money" }, el("span", {}, cur()), el("input", { type: "number", id: "idea-cost", min: "0", step: "1", placeholder: "e.g. 30" }))),
+    el("label", { class: "f" }, "Indoors or outdoors", el("select", { id: "idea-out" }, el("option", { value: "" }, "Either / both"), el("option", { value: "in" }, "Indoors"), el("option", { value: "out" }, "Outdoors"))),
+    el("div", { class: "f full" }, "Vibe", el("div", { class: "seg", id: "idea-vibes" },
+      VIBES.flatMap((v) => [el("input", { type: "checkbox", id: `iv-${v}`, value: v }), el("label", { for: `iv-${v}` }, v)]))),
+    el("div", { class: "full form-actions" }, el("button", { class: "btn small", type: "submit" }, "Add idea"), el("span", { class: "note", id: "idea-note" })));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("idea-name").value.trim(), cost = Number($("idea-cost").value);
+    const vibes = VIBES.filter((v) => $(`iv-${v}`).checked);
+    if (!name || !(cost >= 0) || $("idea-cost").value === "" || !vibes.length) { $("idea-note").textContent = "Add a name, a cost and at least one vibe."; return; }
+    const out = $("idea-out").value;
+    try {
+      await addIdea({ name: name.slice(0, 70), costPP: cost, vibes, outdoor: out === "" ? null : out === "out", byBot: false, addedBy: me.id, note: "" });
+      render();
+    } catch (err) { $("idea-note").textContent = writeError(err); }
+  });
+  return el("details", { class: "add" }, el("summary", {}, "Add your own idea"), form);
+}
+
+function renderStage() {
+  const box = $("stage");
+  const p = plan();
+  if (showingResults()) return renderResults(box);
+  if (phase() === "voting") return renderVoting(box);
+  if (!p.kind || !p.place) {
+    box.replaceChildren(el("div", { class: "panel-head" }, el("h2", {}, "Let's plan something")),
+      el("div", { class: "empty" }, el("strong", {}, "What are we planning?"),
+        el("span", {}, "A birthday, a dinner, a night out, a trip, anything. Fill in what you're planning below, or just tell the planner bot in the chat."),
+        el("button", { class: "btn ghost", onclick: () => $("kind").focus() }, "Set up the plan")));
+    return;
+  }
+  const r = ranking(), bs = budgetStatus(), ms = members();
+  const blockers = [];
+  if (!ms.length) blockers.push("someone needs to save their preferences");
+  else if (bs.missing.length) blockers.push(`waiting for ${names(bs.missing)} to add a budget`);
+  else if (!bs.allAgreed) blockers.push(`waiting for ${names(ms.filter((m) => !bs.agreed.includes(m.uid)).map((m) => m.uid))} to agree the budget`);
+  if (r.ideas.length < 2) blockers.push("there need to be at least 2 ideas");
+  const list = r.ideas.length ? el("ol", { class: "ideas" }, r.ideas.map(ideaRow))
+    : el("div", { class: "empty" }, el("strong", {}, r.needsArea ? "Pick the kind of area" : "No ideas yet"),
+        el("span", {}, r.needsArea ? "Choose city, suburb, town or rural in the plan details below to see ideas."
+          : KINDS[p.kind].catalog ? "Nothing fits the budget yet. Add your own idea, or ask the bot." : "Ask the planner bot for suggestions in the chat, or add your own idea below."));
+  box.replaceChildren(
+    el("div", { class: "panel-head" }, el("h2", {}, "Ideas"), el("span", { class: "muted" }, `Ranked for ${everyone().length} ${everyone().length === 1 ? "person" : "people"}`)),
+    budgetCard(),
+    el("p", { class: "muted", style: "margin:12px 0 0" }, `👍 pulls similar ideas up, 👎 rules one out.${r.overBudget ? ` ${r.overBudget} idea${r.overBudget === 1 ? " is" : "s are"} hidden for going over budget.` : ""}`),
+    list,
+    addIdeaForm(),
+    el("div", { class: "vote-bar" },
+      el("button", { class: "btn", onclick: startVote, disabled: blockers.length > 0 || !canWrite || !me.id }, "Start the vote"),
+      el("span", { class: "blocker" }, blockers.length ? `Can't vote yet: ${blockers.join("; ")}.` : `Everyone rates the top ${Math.min(6, r.ideas.length)}.`)));
+}
+
+function renderVoting(box) {
+  const list = plan().frozen || [], b = ballots(), mine = b.find((x) => x.uid === me.id);
+  if (mine && !Object.keys(myRatings).length) myRatings = { ...mine.ratings };
+  const done = list.every((f) => Number.isInteger(myRatings[f.name]));
+  box.replaceChildren(
+    el("div", { class: "panel-head" }, el("h2", {}, "Rate the finalists"), el("span", { class: "muted" }, `${b.length} of ${members().length} done`)),
+    el("p", { class: "muted", style: "margin:4px 0 12px" }, "Rate every option honestly. \"No way\" rules an option out for the whole group. The winner is the option the least-happy person likes most, so nobody gets stuck with something they hate."),
+    el("div", { style: "display:grid;gap:10px" }, list.map((f) => el("div", { class: "rate" },
+      el("div", {}, el("span", { class: "name" }, f.name), " ", el("span", { class: "muted" }, `· ${money(f.costPP)} pp`)),
+      el("div", { class: "faces", role: "group", "aria-label": `Rate ${f.name}` }, FACES.map(([emo, label], v) =>
+        el("button", { class: `face${v === 0 ? " veto" : ""}`, "aria-pressed": String(myRatings[f.name] === v), disabled: !me.id || !S.friends[me.id],
+          onclick: () => { myRatings[f.name] = v; renderStage(); } }, emo, el("small", {}, label))))))),
+    el("div", { class: "vote-bar" },
+      el("button", { class: "btn", onclick: submitRatings, disabled: !done || !S.friends[me.id] }, mine ? "Update my ratings" : done ? "Submit my ratings" : "Rate them all to submit"),
+      b.length ? el("button", { class: "btn ghost", onclick: () => savePlan({ phase: "results" }).then(render), disabled: !canWrite }, "Close voting now") : null,
+      el("button", { class: "linkbtn", onclick: backToPlanning, disabled: !canWrite }, "Back to planning"),
+      !S.friends[me.id] ? el("span", { class: "blocker" }, "Save your preferences to join the vote.") : null));
+}
+
+function renderResults(box) {
+  const { rows, winner } = consensus(plan().frozen || [], ballots());
+  const so = signoffs(), ms = members();
+  const everyoneIn = winner && ms.length > 0 && so.in.length === ms.length;
+  const head = el("div", { class: "panel-head" }, el("h2", {}, everyoneIn ? "Decided" : "Results"), el("span", { class: "muted" }, `${ballots().length} rated`));
+  let top;
+  if (everyoneIn) {
+    top = el("div", { class: "decided" }, el("div", { class: "muted" }, "Everyone's in 🎉"), el("div", { class: "big" }, winner.name),
+      el("div", {}, `${money(winner.costPP)} per person, within the budget everyone agreed.`), mapsLink(lookupIdea(winner.name)));
+  } else if (winner) {
+    const myStatus = so.in.includes(me.id) ? "in" : so.out.includes(me.id) ? "out" : null;
+    top = el("div", {},
+      el("div", { class: "winner" }, el("div", { class: "label" }, "Best for everyone"), el("div", { class: "big" }, winner.name),
+        el("div", { style: "font-size:14px;opacity:.85" }, `Nobody ruled it out. The least-happy rating is ${FACES[winner.min][0]} ${FACES[winner.min][1]}. ${money(winner.costPP)} pp.`),
+        mapsLink(lookupIdea(winner.name))),
+      el("div", { class: "signoff" },
+        el("strong", {}, "Is everyone happy with this?"),
+        el("div", { class: "agree" },
+          ...so.in.map((u) => el("span", { class: "tag yes" }, `${nameOf(u)} · in`)),
+          ...so.out.map((u) => el("span", { class: "tag no" }, `${nameOf(u)} · not happy`)),
+          ...so.waiting.map((u) => el("span", { class: "tag" }, `${nameOf(u)} · waiting`))),
+        S.friends[me.id] ? el("div", { class: "form-actions" },
+          el("button", { class: "btn good", onclick: () => signOff(true), "aria-pressed": String(myStatus === "in") }, myStatus === "in" ? "You're in ✓" : "I'm in"),
+          el("button", { class: "btn ghost", onclick: () => signOff(false), "aria-pressed": String(myStatus === "out") }, "Not happy")) : null,
+        so.out.length ? el("div", { class: "muted", style: "font-size:13px" }, `${names(so.out)} isn't happy yet. Talk it over in the chat, then plan again or re-run the vote.`) : null));
+  } else {
+    top = el("div", { class: "winner" }, el("div", { class: "label" }, "No agreement yet"), el("div", { class: "big" }, "Every option was ruled out by someone"),
+      el("div", { style: "font-size:14px;opacity:.85" }, "Go back to planning, talk in the chat about what would work, and add new ideas."));
+  }
+  const table = el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Option"), el("th", { class: "num" }, "Least happy"), el("th", { class: "num" }, "Total"), el("th", {}, "Ruled out by"))),
+    el("tbody", {}, rows.map((r) => el("tr", { class: r.vetoes.length ? "out" : "" },
+      el("td", {}, r.name), el("td", { class: "num" }, r.min == null ? "–" : `${FACES[r.min][0]} ${FACES[r.min][1]}`),
+      el("td", { class: "num" }, String(r.total)), el("td", {}, r.vetoes.length ? names(r.vetoes) : "–"))))));
+  box.replaceChildren(head, top, table,
+    el("div", { class: "vote-bar" }, el("button", { class: "btn ghost", onclick: backToPlanning, disabled: !canWrite }, everyoneIn ? "Plan something new" : "Back to planning"),
+      !everyoneIn && winner ? el("span", { class: "blocker" }, "It's decided once everyone taps \"I'm in\".") : null));
+}
+
+function renderPeople() {
+  const ids = Object.keys(S.friends), bs = budgetStatus();
+  const chips = ids.map((uid) => {
+    const f = S.friends[uid];
+    const bits = [f.vibe, PLACES[f.place]?.toLowerCase(), budgetOf(f) != null ? `up to ${money(f.budgetMax)}` : "no budget yet"].filter(Boolean);
+    return el("span", { class: "person" }, el("span", { class: "dot", "data-avatar": uid }, "•"), el("span", {}, nameOf(uid)), el("small", {}, bits.join(" · ")));
+  });
+  for (const g of Object.values(S.guests)) {
+    const bits = [g.vibe, PLACES[g.place]?.toLowerCase(), budgetOf(g) != null ? `up to ${money(g.budgetMax)}` : null, "added by chat"].filter(Boolean);
+    chips.push(el("span", { class: "person" }, el("span", { class: "dot" }, "+"), el("span", {}, g.name), el("small", {}, bits.join(" · "))));
+  }
+  $("people").replaceChildren(...(chips.length ? chips : [el("span", { class: "muted" }, "Nobody yet. Save your preferences below to join.")]));
+  $("people-count").textContent = chips.length ? `${chips.length} in the plan` : "";
+  if (user && ids.length) user.profiles(ids).then((ps) => {
+    for (const uid of ids) {
+      const slot = $("people").querySelector(`[data-avatar="${CSS.escape(uid)}"]`);
+      if (slot && ps[uid]?.avatarUrl) slot.replaceWith(el("img", { src: ps[uid].avatarUrl, alt: "" }));
+    }
+  });
+}
+
+let chatKey = "";
+function renderChat() {
+  const key = S.chat.map((m) => m.id).join(",") + "|" + botBusy + "|" + JSON.stringify(S.names);
+  if (key === chatKey) return;
+  chatKey = key;
+  const box = $("msgs");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const rows = S.chat.map((m) => {
+    const kind = m.bot ? "bot" : m.author === me.id ? "mine" : "";
+    return el("div", { class: `msg ${kind}` }, el("div", { class: "who" }, m.bot ? "🎈 Planner bot" : nameOf(m.author)), el("div", { class: "body" }, m.text));
+  });
+  if (!rows.length) rows.push(el("div", { class: "msg bot" }, el("div", { class: "who" }, "🎈 Planner bot"),
+    el("div", { class: "body" }, "Hi! What are we planning? A birthday, a dinner, a night out, a trip, anything. Tell me what you have in mind and roughly what you can spend.")));
+  if (botBusy) rows.push(el("div", { class: "msg bot thinking" }, el("div", { class: "who" }, "🎈 Planner bot"), el("div", { class: "body", id: "bot-live" }, pendingBot || "Thinking…")));
+  box.replaceChildren(...rows);
+  if (atBottom || botBusy) box.scrollTop = box.scrollHeight;
+}
+
+function render() { renderHeader(); renderSteps(); renderStage(); renderPeople(); renderChat(); fillForms(); }
+
+/* ---------- Forms ---------- */
+function seg(id, name, options, labels, type = "radio") {
+  $(id).replaceChildren(...options.flatMap((v) => [
+    el("input", { type, name, id: `${id}-${v}`, value: String(v) }),
+    el("label", { for: `${id}-${v}` }, labels ? labels[v] : v)]));
+}
+function options(id, entries) { $(id).replaceChildren(...entries.map(([v, t]) => el("option", { value: v }, t))); }
+seg("me-vibe", "vibe", VIBES);
+seg("me-place", "place", Object.keys(PLACES), PLACES);
+seg("features", "features", FEATURES, null, "checkbox");
+options("kind", [["", "Choose…"], ...Object.entries(KINDS).map(([k, v]) => [k, v.label])]);
+options("setting", [["", "Choose…"], ...SETTINGS.map((v) => [v, v])]);
+options("month", [["", "Not sure yet"], ...MONTHS.map((m, i) => [String(i + 1), m])]);
+options("hemi", [["", "Choose…"], ...Object.entries(HEMIS)]);
+options("currency", Object.entries(CURRENCIES));
+
+let locDirty = false, meDirty = false;
+$("loc-form").addEventListener("input", () => { locDirty = true; syncPlaceLabel(); });
+$("me-form").addEventListener("input", () => { meDirty = true; });
+function syncPlaceLabel() {
+  const k = $("kind").value, local = !KINDS[k] || KINDS[k].catalog;
+  $("place-label").textContent = KINDS[k]?.place || "Town or city";
+  for (const id of ["setting", "hemi"]) $(id).closest("label").hidden = !local;
+  $("features").closest(".f").hidden = !local;
+}
+function fillForms() {
+  const p = plan();
+  if (!locDirty) {
+    $("kind").value = p.kind || ""; $("ptitle").value = p.title || ""; $("place").value = p.place || "";
+    $("setting").value = p.setting || ""; $("month").value = p.month ? String(p.month) : ""; $("hemi").value = p.hemisphere || "";
+    $("currency").value = p.currency;
+    for (const f of FEATURES) $(`features-${f}`).checked = (p.features || []).includes(f);
+    syncPlaceLabel();
+  }
+  for (const c of document.querySelectorAll(".cur")) c.textContent = cur();
+  const mine = S.friends[me.id];
+  if (!meDirty && mine) {
+    if (VIBES.includes(mine.vibe)) $(`me-vibe-${mine.vibe}`).checked = true;
+    if (PLACES[mine.place]) $(`me-place-${mine.place}`).checked = true;
+    $("me-budget").value = budgetOf(mine) ?? "";
+  }
+  $("me-save").disabled = !me.id; $("loc-save").disabled = !me.id || !canWrite;
+  $("me-save").textContent = mine ? "Update my preferences" : "Join with these preferences";
+}
+
+$("loc-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const patch = {
+    kind: $("kind").value, title: $("ptitle").value.trim(), place: $("place").value.trim(), setting: $("setting").value || null,
+    month: Number($("month").value) || null, hemisphere: $("hemi").value || null, currency: $("currency").value,
+    features: FEATURES.filter((f) => $(`features-${f}`).checked),
+  };
+  if (!patch.kind || !patch.place) { $("loc-note").textContent = "Choose the kind of plan and fill in the place."; return; }
+  if (KINDS[patch.kind].catalog && !patch.setting) { $("loc-note").textContent = "Choose the kind of area so the ideas fit."; return; }
+  try { await savePlan(patch); locDirty = false; $("loc-note").textContent = "Saved."; render(); }
+  catch (err) { $("loc-note").textContent = writeError(err); }
+});
+
+$("me-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const v = document.querySelector("input[name=vibe]:checked"), pl = document.querySelector("input[name=place]:checked");
+  const b = $("me-budget").value === "" ? null : Math.round(Number($("me-budget").value));
+  if (!v || !pl) { say("Pick a vibe and indoors or outdoors."); return; }
+  if (b != null && !(b > 0)) { say("The budget needs to be more than zero."); return; }
+  try {
+    await saveMine({ vibe: v.value, place: pl.value, budgetMax: b });
+    meDirty = false; say(b == null ? "Saved. Add a budget so the group can agree one." : "Saved."); render();
+  } catch (err) { say(writeError(err)); }
+});
+
+async function react(name, signal) { try { await saveFeedback(name, signal); render(); } catch (err) { say(writeError(err)); } }
+
+async function startVote() {
+  const r = ranking();
+  if (r.ideas.length < 2 || !budgetStatus().allAgreed) return;
+  myRatings = {};
+  await savePlan({ phase: "voting", round: round() + 1, frozen: r.ideas.slice(0, 6).map(({ name, reasons, costPP, custom }) => ({ name, reasons, costPP, custom })) });
+  render();
+}
+async function backToPlanning() { myRatings = {}; await savePlan({ phase: "planning" }); render(); }
+async function submitRatings() {
+  try {
+    const ratings = { ...myRatings };
+    S.ratings[me.id] = { round: round(), ratings };
+    await db.doc(`ratings/${me.id}`).set({ round: round(), ratings, at: Date.now() });
+    render();
+  } catch (err) { say(writeError(err)); }
+}
+async function signOff(isIn) { try { await saveMine({ signoff: { round: round(), in: isIn } }); render(); } catch (err) { say(writeError(err)); } }
+
+for (const t of ["plan", "chat"]) $(`tab-${t}`).onclick = () => {
+  $("board").dataset.tab = t;
+  $("tab-plan").setAttribute("aria-selected", String(t === "plan"));
+  $("tab-chat").setAttribute("aria-selected", String(t === "chat"));
+  if (t === "chat") $("msgs").scrollTop = $("msgs").scrollHeight;
+};
+
+/* ---------- The planner bot (Claude, through page tools) ---------- */
+const BOT_RULES = `You are the planner bot in a group chat of friends planning something together: a birthday, a dinner, a day or night out, a trip or holiday, or anything else. Be warm and brief (2-6 short sentences, or a short list). Reply in plain text without Markdown headings or bold.
+
+The goal is a plan everyone is happy with. The app enforces this: everyone gives the most they can spend per person, the group budget is the lowest of those, and every person must agree it themselves before voting opens. Voting is by happiness ratings, and anything someone rates "No way" is out. Finally everyone taps "I'm in".
+
+Tools (they act for the person who wrote the LAST message):
+- set_plan: what's being planned (kind, name, place, area type, nearby beach/mountains/lake, month, climate, currency). Infer what you can (e.g. "Hayes, London" = suburb, north, £). For trips, place is where people travel from.
+- set_my_preferences: the sender's vibe, indoor/outdoor preference and the most they can spend per person (a number in the plan's currency).
+- agree_budget: ONLY when the sender clearly says they accept the current group budget. Never agree for anyone else.
+- add_friend: preferences for someone mentioned who isn't using the app.
+- add_idea: add a concrete option with a realistic estimated cost per person. Use it for trips, holidays and anything the built-in list doesn't cover. For trips include travel, stay, food and activities in the cost, name a real destination and length (e.g. "4 days in Kraków"), and put a one-line why in note. Keep options inside the group budget when there is one. Add 3-5 varied options at a time.
+- record_feedback: the sender likes or rules out a listed idea.
+- get_suggestions: the current ranked ideas plus budget status and who still needs to act. Call it after changes, before talking about ideas.
+- start_vote: when the group is ready and the budget is agreed.
+
+Rules: costs you add are estimates; say so and suggest checking current prices. You can't book anything. Don't name specific businesses; the app has map links. If people disagree, look for options that work for everyone and point out who still needs to add a budget, agree it, rate or sign off.`;
+
+const BOT_TOOLS = [
+  { name: "set_plan", description: "Save or change what's being planned. Send only fields you know; others are kept. Returns the saved plan.",
+    inputSchema: { type: "object", properties: {
+      kind: { type: "string", enum: Object.keys(KINDS) }, title: { type: "string", description: "Short name, e.g. \"Divahar's birthday\"" },
+      place: { type: "string", description: "Town or city; for trips, where people travel from" }, setting: { type: "string", enum: SETTINGS },
+      features: { type: "array", items: { type: "string", enum: FEATURES } }, hemisphere: { type: "string", enum: Object.keys(HEMIS) },
+      month: { type: "integer", minimum: 1, maximum: 12 }, currency: { type: "string", enum: Object.keys(CURRENCIES) } } },
+    async execute(a) {
+      const patch = {};
+      if (a.kind != null) { if (!KINDS[a.kind]) throw new Error(`kind must be one of ${Object.keys(KINDS)}`); patch.kind = a.kind; }
+      if (a.title) patch.title = String(a.title).slice(0, 60);
+      if (a.place) patch.place = String(a.place).slice(0, 60);
+      if (a.setting != null) { if (!SETTINGS.includes(a.setting)) throw new Error(`setting must be one of ${SETTINGS}`); patch.setting = a.setting; }
+      if (Array.isArray(a.features)) patch.features = a.features.filter((f) => FEATURES.includes(f));
+      if (a.hemisphere != null) { if (!HEMIS[a.hemisphere]) throw new Error("hemisphere must be north, south or tropical"); patch.hemisphere = a.hemisphere; }
+      if (a.month != null) { const m = Number(a.month); if (!(m >= 1 && m <= 12)) throw new Error("month must be 1-12"); patch.month = m; }
+      if (a.currency != null) { if (!CURRENCIES[a.currency]) throw new Error("currency must be £, €, $ or ₹"); patch.currency = a.currency; }
+      await savePlan(patch); render();
+      return { plan: plan(), season: context().season };
+    } },
+  { name: "set_my_preferences", description: "Save the sender's preferences. budget_max is the most they can spend per person, in the plan's currency.",
+    inputSchema: { type: "object", properties: { vibe: { type: "string", enum: VIBES }, place: { type: "string", enum: Object.keys(PLACES) }, budget_max: { type: "number", minimum: 1 } }, required: ["vibe", "place"] },
+    async execute(a) {
+      if (!VIBES.includes(a.vibe) || !PLACES[a.place]) throw new Error("vibe or place not recognised");
+      const patch = { vibe: a.vibe, place: a.place };
+      if (a.budget_max != null) { const b = Math.round(Number(a.budget_max)); if (!(b > 0)) throw new Error("budget_max must be a positive number"); patch.budgetMax = b; }
+      await saveMine(patch); render();
+      return { saved: S.friends[me.id], groupBudget: budgetStatus().limit };
+    } },
+  { name: "agree_budget", description: "Record that the sender accepts the current group budget. Only when they said so themselves.",
+    async execute() {
+      const bs = budgetStatus();
+      if (bs.limit == null) throw new Error("There's no group budget yet.");
+      if (!S.friends[me.id] || budgetOf(S.friends[me.id]) == null) throw new Error("The sender needs to give their own budget first.");
+      await saveMine({ budgetOk: bs.limit }); render();
+      return `Agreed to ${money(bs.limit)} per person.`;
+    } },
+  { name: "add_friend", description: "Save preferences for a friend who was mentioned but isn't using the app. Calling it again with the same name updates them.",
+    inputSchema: { type: "object", properties: { name: { type: "string" }, vibe: { type: "string", enum: VIBES }, place: { type: "string", enum: Object.keys(PLACES) }, budget_max: { type: "number", minimum: 1 } }, required: ["name", "vibe", "place"] },
+    async execute(a) {
+      if (!a.name || !VIBES.includes(a.vibe) || !PLACES[a.place]) throw new Error("name, vibe or place not recognised");
+      const g = { name: String(a.name).slice(0, 40), vibe: a.vibe, place: a.place, budgetMax: a.budget_max ? Math.round(Number(a.budget_max)) : null };
+      S.guests[slug(g.name)] = g;
+      await db.doc(`guests/${slug(g.name)}`).set(g); render();
+      return `Saved ${g.name}.`;
+    } },
+  { name: "add_idea", description: "Add one concrete option to the group's list, with a realistic estimated cost per person in the plan's currency.",
+    inputSchema: { type: "object", properties: { name: { type: "string", description: "Short and concrete, e.g. \"4 days in Kraków\"" },
+      cost_per_person: { type: "number", minimum: 0 }, vibes: { type: "array", items: { type: "string", enum: VIBES } },
+      outdoor: { type: "boolean", description: "Leave out if it's a mix" }, note: { type: "string", description: "One short line on why it fits" } },
+      required: ["name", "cost_per_person", "vibes"] },
+    async execute(a) {
+      const vibes = (a.vibes || []).filter((v) => VIBES.includes(v));
+      const cost = Number(a.cost_per_person);
+      if (!a.name || !vibes.length || !(cost >= 0)) throw new Error("needs a name, a cost and at least one vibe");
+      await addIdea({ name: String(a.name).slice(0, 70), costPP: Math.round(cost), vibes, outdoor: typeof a.outdoor === "boolean" ? a.outdoor : null,
+        note: String(a.note || "").slice(0, 140), byBot: true, addedBy: me.id });
+      render();
+      const limit = budgetStatus().limit;
+      return limit != null && cost > limit ? `Added, but it's over the ${money(limit)} budget so it stays hidden.` : "Added.";
+    } },
+  { name: "record_feedback", description: "Record that the sender likes or rules out one of the listed ideas (exact name).",
+    inputSchema: { type: "object", properties: { idea: { type: "string" }, liked: { type: "boolean" } }, required: ["idea", "liked"] },
+    async execute(a) {
+      if (!candidates().some((c) => c.name === a.idea)) throw new Error(`No idea called "${a.idea}". Use an exact name from get_suggestions.`);
+      await saveFeedback(a.idea, a.liked ? 1 : -1); render();
+      return "Noted.";
+    } },
+  { name: "get_suggestions", description: "The ranked ideas (best first) with cost per person and reasons, the budget status, and who still needs to add a budget, agree it, rate or sign off.",
+    async execute() {
+      const r = ranking(), bs = budgetStatus(), so = signoffs();
+      return { plan: { kind: plan().kind, title: plan().title, place: plan().place, phase: phase() },
+        ideas: r.ideas.map(({ name, costPP, reasons, note }) => ({ name, costPerPerson: costPP, reasons, note })), hiddenOverBudget: r.overBudget,
+        budget: { perPerson: bs.limit, currency: cur(), agreedByEveryone: bs.allAgreed, needBudget: bs.missing.map(nameOf),
+          needToAgree: members().filter((m) => budgetOf(m) != null && !bs.agreed.includes(m.uid)).map((m) => nameOf(m.uid)) },
+        voting: phase() === "planning" ? null : { rated: ballots().map((b) => nameOf(b.uid)), winner: showingResults() ? consensus(plan().frozen || [], ballots()).winner?.name ?? null : null,
+          in: so.in.map(nameOf), notHappy: so.out.map(nameOf) } };
+    } },
+  { name: "start_vote", description: "Freeze the top ideas and open voting. Only works once everyone has agreed the budget.",
+    async execute() {
+      if (!budgetStatus().allAgreed) throw new Error("Not everyone has agreed the budget yet.");
+      if (ranking().ideas.length < 2) throw new Error("Need at least 2 ideas.");
+      await startVote(); return "Voting is open in the app.";
+    } },
+];
+
+function stateBrief() {
+  const p = plan(), bs = budgetStatus();
+  return JSON.stringify({
+    plan: p.kind ? { kind: p.kind, title: p.title, place: p.place, setting: p.setting || null, nearby: p.features || [], month: p.month ? MONTHS[p.month - 1] : null, currency: p.currency, phase: phase() } : null,
+    people: [...members().map((m) => ({ name: S.names[m.uid] || (m.uid === me.id ? "the sender" : "someone"), vibe: m.vibe, place: m.place, maxPerPerson: budgetOf(m), agreedBudget: bs.agreed.includes(m.uid) })),
+      ...Object.values(S.guests).map((g) => ({ name: g.name, vibe: g.vibe, place: g.place, maxPerPerson: budgetOf(g), notUsingApp: true }))],
+    groupBudgetPerPerson: bs.limit, budgetAgreedByEveryone: bs.allAgreed,
+    customIdeas: Object.values(S.ideas).map((i) => ({ name: i.name, costPerPerson: i.costPP })),
+  });
+}
+
+async function askBot(senderName) {
+  if (!sample || botBusy) return;
+  const recent = S.chat.slice(-30);
+  const turns = [{ role: "user", content: `${BOT_RULES}\n\nCurrent plan (from the app's shared data): ${stateBrief()}\n\nThe chat follows. Each friend's message starts with their name in square brackets.` }];
+  for (const m of recent) turns.push({ role: m.bot ? "assistant" : "user", content: m.bot ? m.text : `[${m.author === me.id ? senderName : nameOf(m.author)}]: ${m.text}` });
+  if (turns[turns.length - 1].role !== "user") return;
+  botBusy = true; pendingBot = null; render();
+  try {
+    const { text } = await sample(turns, {
+      cache: false, tools: BOT_TOOLS,
+      onText: ({ text }) => { pendingBot = text; const live = $("bot-live"); if (live) live.textContent = text; },
+    });
+    if (text.trim()) await db.collection("chat").add({ author: me.id, bot: true, text: text.trim().slice(0, 4000), at: Date.now() });
+  } catch (e) {
+    const copy = {
+      not_granted: "The planner bot needs your OK to use Claude. You can still plan with the forms and the chat.",
+      rate_limited: "The planner bot is busy right now. Try again in a minute.",
+      sampling_disabled: "The planner bot isn't available on your account. The forms still work.",
+      refused: "The bot can't help with that one.",
+    }[e?.code] || (e?.code === "cancelled" ? null : "The bot couldn't answer just now. Try again in a moment.");
+    if (e?.text?.trim()) await db.collection("chat").add({ author: me.id, bot: true, text: e.text.trim().slice(0, 4000), at: Date.now() }).catch(() => {});
+    if (copy) { $("bot-off").textContent = copy; $("bot-off").hidden = false; }
+    if (e?.code === "not_granted" || e?.code === "sampling_disabled") sample = null;
+  } finally {
+    botBusy = false; pendingBot = null; render();
+  }
+}
+
+$("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = $("text").value.trim();
+  if (!text || !db || !me.id) return;
+  $("text").value = "";
+  try {
+    const ref = await db.collection("chat").add({ author: me.id, bot: false, text: text.slice(0, 800), at: Date.now() });
+    if (!S.chat.some((m) => m.id === ref.id)) S.chat.push({ id: ref.id, author: me.id, bot: false, text, at: Date.now() });
+    renderChat();
+    const myName = (await user?.me())?.name || "Me";
+    askBot(myName);
+  } catch (err) { $("bot-off").textContent = writeError(err); $("bot-off").hidden = false; }
+});
+
+/* ---------- Boot ---------- */
+render();
+(async () => {
+  const use = (name) => (window.claude?.use ? window.claude.use(name) : Promise.resolve(null));
+  [db, user, sample] = await Promise.all([use("db"), use("user"), use("sample")]);
+  if (user) { me = await user.me(); const w = await user.can("data.write"); if (w === false) canWrite = false; }
+  if (!sample) { $("bot-off").textContent = "The planner bot isn't available here. You can still chat with the group and use the forms."; $("bot-off").hidden = false; }
+  if (!db || !me.id) {
+    $("text").disabled = true; $("send").disabled = true;
+    $("text").placeholder = "Sign in to Claude to chat and save";
+    say("Saving needs a signed-in Claude account with access to this page.");
+    render(); return;
+  }
+  const onErr = (e) => { if (e.code === "revoked") { canWrite = false; render(); } };
+  const resolveNames = async () => {
+    const ids = [...new Set([...Object.keys(S.friends), ...Object.keys(S.ratings), ...S.chat.map((m) => m.author)])].filter(Boolean);
+    if (!user || !ids.length) return;
+    const ps = await user.profiles(ids);
+    let changed = false;
+    for (const id of ids) { const n = ps[id]?.name || ""; if (n && S.names[id] !== n) { S.names[id] = n; changed = true; } }
+    if (changed) render();
+  };
+  db.doc("plan/main").onSnapshot((s) => { S.plan = s.exists ? { ...s.data() } : null; render(); }, onErr);
+  const coll = (name, key) => db.collection(name).onSnapshot((q) => {
+    S[key] = Object.fromEntries(q.docs.map((d) => [d.id, { ...d.data() }])); render(); resolveNames();
+  }, onErr);
+  coll("friends", "friends"); coll("guests", "guests"); coll("feedback", "feedback"); coll("ratings", "ratings"); coll("ideas", "ideas");
+  db.collection("chat").orderBy("at", "desc").limit(120).onSnapshot((q) => {
+    S.chat = q.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => typeof m.text === "string").reverse();
+    renderChat(); resolveNames();
+  }, onErr);
+})();
+</script>
