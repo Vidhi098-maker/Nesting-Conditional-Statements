@@ -142,6 +142,18 @@
   .decided { padding: 22px; border-radius: var(--r); background: var(--good-soft); display: grid; gap: 6px; }
   .decided .big { font: 800 clamp(24px, 4.5vw, 34px)/1.1 var(--display); }
 
+  [hidden] { display: none !important; }
+  /* Welcome / join */
+  .welcome { max-width: 600px; width: 100%; margin: 4vh auto 0; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 26px 24px; display: grid; gap: 16px; }
+  .welcome h2 { font-size: clamp(26px, 5vw, 34px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+  .welcome .lede { color: var(--muted); margin: 0; }
+  .who-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--bg); }
+  .who-card .av { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--surface-2); overflow: hidden; flex: none; }
+  .who-card .av img { width: 100%; height: 100%; }
+  .who-card small { display: block; color: var(--muted); font-size: 13px; }
+  .welcome form { display: grid; gap: 14px; }
+  .welcome .already { font-size: 13.5px; color: var(--muted); }
+  .welcome .row-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   /* People */
   .roster { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
   .roster li { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 8px 12px; border-radius: 12px; background: var(--bg); }
@@ -198,6 +210,28 @@
     <h1 id="title">Group <span>Planner</span></h1>
     <div class="chips" id="summary"></div>
   </header>
+
+  <section class="welcome" id="welcome" hidden aria-labelledby="welcome-title">
+    <div>
+      <h2 id="welcome-title">Join the plan</h2>
+      <p class="lede" id="welcome-lede">Add your name and what you'd like. The group budget, ideas and vote all build on everyone's answers.</p>
+    </div>
+    <div class="who-card"><span class="av" id="w-av">?</span><span><strong id="w-account">Your Claude account</strong><small>You're signed in with your Claude account. No separate password needed.</small></span></div>
+    <div class="already" id="w-already"></div>
+    <form id="w-form">
+      <label class="f">Your name in the plan<input type="text" id="w-name" maxlength="30" autocomplete="nickname" placeholder="e.g. Devan"></label>
+      <div class="f">Ideal vibe<div class="seg" id="w-vibe"></div></div>
+      <div class="f">Indoors or outdoors<div class="seg" id="w-place"></div></div>
+      <label class="f">The most you can spend per person
+        <span class="money"><span class="cur"></span><input type="number" id="w-budget" min="1" step="1" inputmode="numeric" placeholder="e.g. 50"></span>
+      </label>
+      <div class="row-actions">
+        <button class="btn" type="submit" id="w-join">Join the plan</button>
+        <button class="linkbtn" type="button" id="w-skip">Just look around</button>
+        <span class="note" id="w-note"></span>
+      </div>
+    </form>
+  </section>
 
   <ol class="steps" id="steps" aria-label="Progress"></ol>
 
@@ -459,7 +493,7 @@ function consensus(finalists, ballots) {
 }
 
 /* ---------- Shared state ---------- */
-const S = { plan: null, friends: {}, guests: {}, feedback: {}, ratings: {}, ideas: {}, chat: [], names: {} };
+const S = { plan: null, friends: {}, guests: {}, feedback: {}, ratings: {}, ideas: {}, chat: [], names: {}, loaded: {} };
 let db = null, user = null, sample = null, me = { id: null }, canWrite = true;
 let myRatings = {}, botBusy = false, pendingBot = null;
 
@@ -551,7 +585,7 @@ function signoffs() {
   }
   return out;
 }
-function nameOf(uid) { return uid === me.id ? "You" : S.names[uid] || "Someone"; }
+function nameOf(uid) { return uid === me.id ? "You" : S.friends[uid]?.nickname || S.names[uid] || "Someone"; }
 function names(uids) { return uids.map((u) => (u === me.id ? "you" : nameOf(u))).join(", "); }
 
 /* ---------- Writes (also applied locally so the bot's next tool call sees them) ---------- */
@@ -790,7 +824,7 @@ async function setActive(uid, active) {
 }
 
 /* Everyone who has joined (saved preferences), with what they can spend. */
-function displayName(uid) { return S.names[uid] || (uid === me.id ? me.name : "") || "Someone"; }
+function displayName(uid) { return S.friends[uid]?.nickname || S.names[uid] || (uid === me.id ? me.name : "") || "Someone"; }
 function renderPeople() {
   const bs = budgetStatus();
   const ids = Object.keys(S.friends).sort((a, b) => (a === me.id ? -1 : b === me.id ? 1 : displayName(a).localeCompare(displayName(b))));
@@ -844,7 +878,28 @@ function renderChat() {
   if (atBottom || botBusy) box.scrollTop = box.scrollHeight;
 }
 
-function render() { renderHeader(); renderSteps(); renderStage(); renderPeople(); renderChat(); fillForms(); }
+/* Welcome screen: shown to a signed-in person who hasn't joined yet, until
+   they join or choose to look around first. */
+let skipWelcome = false;
+try { skipWelcome = sessionStorage.getItem("gp-look-around") === "1"; } catch {}
+function showWelcome() { return !!(db && me.id && S.loaded.friends && !S.friends[me.id] && !skipWelcome); }
+let welcomeFilled = false;
+function renderWelcome() {
+  const on = showWelcome();
+  $("welcome").hidden = !on;
+  for (const n of [$("steps"), document.querySelector(".tabs"), $("board")]) n.hidden = on;
+  if (!on) return;
+  const p = plan();
+  $("welcome-title").textContent = p.title ? `Join ${p.title}` : "Join the plan";
+  const ms = members();
+  $("w-already").textContent = ms.length ? `Already in: ${ms.map((m) => displayName(m.uid)).join(", ")}` : "You'll be the first one in.";
+  $("w-account").textContent = me.name ? `Signed in as ${me.name}` : "Signed in with Claude";
+  $("w-av").textContent = (me.name || "?")[0].toUpperCase();
+  if (me.avatarUrl && !$("w-av").querySelector("img")) $("w-av").replaceChildren(el("img", { src: me.avatarUrl, alt: "" }));
+  if (!welcomeFilled) { $("w-name").value = me.name || ""; welcomeFilled = true; }
+}
+
+function render() { renderWelcome(); renderHeader(); renderSteps(); renderStage(); renderPeople(); renderChat(); fillForms(); }
 
 /* ---------- Forms ---------- */
 function seg(id, name, options, labels, type = "radio") {
@@ -856,6 +911,24 @@ function options(id, entries) { $(id).replaceChildren(...entries.map(([v, t]) =>
 seg("me-vibe", "vibe", VIBES);
 seg("me-place", "place", Object.keys(PLACES), PLACES);
 seg("features", "features", FEATURES, null, "checkbox");
+seg("w-vibe", "w-vibe", VIBES);
+seg("w-place", "w-place", Object.keys(PLACES), PLACES);
+$("w-skip").onclick = () => { skipWelcome = true; try { sessionStorage.setItem("gp-look-around", "1"); } catch {} render(); };
+$("w-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const nickname = $("w-name").value.trim().replace(/\s+/g, " ").slice(0, 30);
+  const v = document.querySelector("input[name=w-vibe]:checked"), pl = document.querySelector("input[name=w-place]:checked");
+  const b = Math.round(Number($("w-budget").value));
+  if (!nickname) { $("w-note").textContent = "Add the name the group will see."; return; }
+  if (!v || !pl) { $("w-note").textContent = "Pick a vibe and indoors or outdoors."; return; }
+  if (!(b > 0)) { $("w-note").textContent = "Add the most you can spend per person."; return; }
+  $("w-join").disabled = true;
+  try {
+    await saveMine({ nickname, vibe: v.value, place: pl.value, budgetMax: b, active: true });
+    render();
+  } catch (err) { $("w-note").textContent = writeError(err); }
+  finally { $("w-join").disabled = false; }
+});
 options("kind", [["", "Choose…"], ...Object.entries(KINDS).map(([k, v]) => [k, v.label])]);
 options("setting", [["", "Choose…"], ...SETTINGS.map((v) => [v, v])]);
 options("month", [["", "Not sure yet"], ...MONTHS.map((m, i) => [String(i + 1), m])]);
@@ -1123,7 +1196,7 @@ render();
   };
   db.doc("plan/main").onSnapshot((s) => { S.plan = s.exists ? { ...s.data() } : null; render(); }, onErr);
   const coll = (name, key) => db.collection(name).onSnapshot((q) => {
-    S[key] = Object.fromEntries(q.docs.map((d) => [d.id, { ...d.data() }])); render(); resolveNames();
+    S[key] = Object.fromEntries(q.docs.map((d) => [d.id, { ...d.data() }])); S.loaded[key] = true; render(); resolveNames();
   }, onErr);
   coll("friends", "friends"); coll("guests", "guests"); coll("feedback", "feedback"); coll("ratings", "ratings"); coll("ideas", "ideas");
   db.collection("chat").orderBy("at", "desc").limit(120).onSnapshot((q) => {
