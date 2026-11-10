@@ -135,6 +135,106 @@ class PlanAgreementTests(unittest.TestCase):
             self.plan.agree_details(self.ids["Alex"])
 
 
+class AfterStateTests(unittest.TestCase):
+    """The kind of activity is worked out backwards from how people want to feel."""
+
+    def ranked(self, feel):
+        plan = GroupPlan()
+        for name in ("Alex", "Ana"):
+            plan.join(f"u:{name}", name)
+            plan.set_preferences(f"u:{name}", None, "either", 60, after=feel)
+        plan.set_details({"kind": "outing", "place": "Leeds", "setting": "city", "month": 5, "hemisphere": "north"})
+        return plan, plan.ranking()[0]
+
+    def test_each_feeling_points_to_a_different_kind_of_activity(self):
+        tops = {feel: self.ranked(feel)[1][0]["name"] for feel in ("spent", "sharp", "unplugged", "buzzing")}
+        self.assertEqual(len(set(tops.values())), 4, tops)
+        self.assertIn(tops["spent"], ("Indoor rock climbing", "Trampoline park"))
+        self.assertIn(tops["sharp"], ("Escape room challenge", "Museum or gallery day + cafe", "Board game and pizza night"))
+
+    def test_reason_says_how_it_leaves_you(self):
+        _, ideas = self.ranked("sharp")
+        self.assertIn("leaves you mentally sharp", ideas[0]["reasons"][0])
+
+    def test_group_top_feeling_and_own_ideas(self):
+        plan, _ = self.ranked("unplugged")
+        plan.join("u:Ben", "Ben")
+        plan.set_preferences("u:Ben", None, "either", 60, after="spent")
+        self.assertEqual(plan.group_after(), ({"unplugged": 2, "spent": 1}, "unplugged"))
+        idea = plan.add_idea("Float tank session", 40, None, after=["unplugged"])
+        self.assertEqual(idea["vibes"], ["chill"])
+        self.assertIn("leaves you unplugged", " ".join(next(i for i in plan.ranking()[0] if i["name"] == "Float tank session")["reasons"]))
+        with self.assertRaises(PlanError):
+            plan.set_preferences("u:Ben", None, "either", 60, after="sleepy")
+
+
+class FeedTests(unittest.TestCase):
+    def setUp(self):
+        self.plan, self.ids = plan_with({"Alex": ("chill", "either", 800), "Ana": ("adventurous", "outdoor", 650),
+                                         "Ben": ("party", "either", 900), "Cleo": ("chill", "either", 700)})
+        add_trips(self.plan)
+
+    def open_feed(self):
+        for uid, _ in self.plan.participants():
+            self.plan.agree_budget(uid)
+
+    def test_location_then_amount_gate_the_feed(self):
+        with self.assertRaisesRegex(PlanError, "agree the budget"):
+            self.plan.suggest_to_feed(self.ids["Alex"], "4 days in Krakow")
+        self.open_feed()
+        self.plan.set_details({"place": "Leeds"}, self.ids["Alex"])      # location changes: everyone agrees again
+        with self.assertRaisesRegex(PlanError, "agree the location"):
+            self.plan.suggest_to_feed(self.ids["Alex"], "4 days in Krakow")
+
+    def test_majority_puts_ideas_in_the_plan_in_order_approved(self):
+        self.open_feed()
+        self.assertEqual(self.plan.majority(), 3)                         # more than half of 4
+        a = self.plan.suggest_to_feed(self.ids["Alex"], "4 days in Krakow")
+        b = self.plan.suggest_to_feed(self.ids["Ana"], "Lisbon and Sintra")
+        self.plan.feed_vote(self.ids["Ben"], b["id"], True)
+        self.assertEqual(self.plan.agreed_plan(), [])                     # 2 of 4 is not a majority
+        self.plan.feed_vote(self.ids["Cleo"], b["id"], True)              # Lisbon reaches 3 first
+        self.plan.feed_vote(self.ids["Ben"], a["id"], True)
+        self.plan.feed_vote(self.ids["Ana"], a["id"], False)
+        self.plan.feed_vote(self.ids["Cleo"], a["id"], True)              # then Krakow
+        self.assertEqual([i["name"] for i in self.plan.agreed_plan()], ["Lisbon and Sintra", "4 days in Krakow"])
+        view = self.plan.view(self.ids["Ana"])
+        krakow = next(f for f in view["feed"] if f["name"] == "4 days in Krakow")
+        self.assertEqual((krakow["yes"], krakow["no"], krakow["you"], krakow["approved"]), (3, 1, "no", True))
+
+    def test_rules(self):
+        self.open_feed()
+        with self.assertRaisesRegex(PlanError, "over the £650 budget"):
+            self.plan.suggest_to_feed(self.ids["Alex"], "Hiking in the Dolomites")
+        with self.assertRaisesRegex(PlanError, "isn't on the list"):
+            self.plan.suggest_to_feed(self.ids["Alex"], "A trip to the moon")
+        item = self.plan.suggest_to_feed(self.ids["Alex"], "Porto long weekend")
+        with self.assertRaisesRegex(PlanError, "already on the feed"):
+            self.plan.suggest_to_feed(self.ids["Ana"], "Porto long weekend")
+        self.assertEqual(item["votes"], {self.ids["Alex"]: True})         # suggesting counts as agreeing
+        self.plan.feed_vote(self.ids["Alex"], item["id"], None)           # and can be withdrawn
+        self.assertEqual(item["votes"], {})
+
+    def test_majority_follows_who_is_in_the_plan(self):
+        self.open_feed()
+        item = self.plan.suggest_to_feed(self.ids["Alex"], "Porto long weekend")
+        self.plan.feed_vote(self.ids["Ana"], item["id"], True)
+        self.assertEqual(self.plan.agreed_plan(), [])                     # 2 of 4
+        self.plan.set_active(self.ids["Alex"], self.plan.token(self.ids["Cleo"]), False)
+        self.assertEqual([i["name"] for i in self.plan.agreed_plan()], ["Porto long weekend"])   # 2 of 3
+        # A lower budget that prices it out takes it back off the plan.
+        self.plan.set_preferences(self.ids["Ben"], "party", "either", 500)
+        self.open_feed()
+        self.assertEqual(self.plan.agreed_plan(), [])
+        self.assertTrue(self.plan.view(self.ids["Ben"])["feed"][0]["over_budget"])
+
+    def test_bot_suggestions_carry_no_vote(self):
+        self.open_feed()
+        item = self.plan.suggest_to_feed(None, "Budapest baths", by_bot=True)
+        self.assertEqual(item["votes"], {})
+        self.assertEqual(self.plan.view(self.ids["Alex"])["feed"][0]["by"], "Planner bot")
+
+
 class VotingTests(unittest.TestCase):
     def setUp(self):
         self.plan, self.ids = plan_with({"Alex": ("chill", "either", 800), "Ana": ("adventurous", "outdoor", 650),

@@ -174,6 +174,35 @@
   .btn.bad { background: var(--bad); color: var(--accent-ink); }
   .btn[aria-pressed=true] { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px currentColor; }
   @media (max-width: 640px) { .sum-grid { grid-template-columns: minmax(0, 1fr); } }
+  /* After-feeling picker, feed and agreed plan */
+  .feels { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .feels input { position: absolute; opacity: 0; pointer-events: none; }
+  .feels label { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); cursor: pointer; color: var(--ink); font-weight: 600; font-size: 14px; }
+  .feels label small { font-weight: 400; color: var(--muted); font-size: 12.5px; line-height: 1.3; }
+  .feels input:checked + label { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); background: var(--bg); }
+  .feels input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sub { font: 800 16px var(--display); margin: 18px 0 0; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .sub span { font: 500 13px var(--body); color: var(--muted); }
+  .feed { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+  .post { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 12px 14px; border-radius: var(--r); background: var(--bg); border: 1px solid transparent; }
+  .post.in { border-color: var(--good); }
+  .post .name { font-weight: 600; font-size: 16px; }
+  .post .by { font-size: 13px; color: var(--muted); grid-column: 1; }
+  .post .tally { grid-column: 1 / -1; display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .post .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+  .post .bar i { display: block; height: 100%; background: var(--good); }
+  .post .meta { grid-column: 1 / -1; display: flex; gap: 6px 12px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .post .meta a, .agreed a { color: var(--accent); font-weight: 600; text-decoration: none; }
+  .yn { display: flex; gap: 6px; grid-row: 1 / span 2; grid-column: 2; align-self: start; }
+  .yn button { width: 38px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-weight: 800; font-size: 16px; padding: 0; }
+  .yn button.y[aria-pressed=true] { background: var(--good); border-color: var(--good); color: var(--accent-ink); }
+  .yn button.n[aria-pressed=true] { background: var(--bad); border-color: var(--bad); color: var(--accent-ink); }
+  .agreed { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; counter-reset: step; }
+  .agreed li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 10px 14px; border-radius: 12px; background: var(--good-soft); }
+  .agreed li::before { counter-increment: step; content: counter(step); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 800 14px var(--display); background: var(--good); color: var(--accent-ink); grid-row: span 2; }
+  .agreed .name { font-weight: 600; }
+  .agreed .meta { grid-column: 2 / -1; font-size: 13px; color: var(--muted); display: flex; gap: 6px 12px; flex-wrap: wrap; }
+  .idea .suggest { grid-column: 3; grid-row: 2 / span 2; align-self: end; }
   .signoff { display: grid; gap: 10px; margin-top: 14px; padding: 14px 16px; border-radius: var(--r); background: var(--bg); }
 
   .roster { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
@@ -274,21 +303,21 @@
         <ul class="roster" id="people"></ul>
         <div class="roster-foot" id="people-foot" hidden></div>
         <form class="grid" id="me-form">
-          <div class="full"><strong>Your preferences</strong> <span class="muted">· these shape the ranking and the budget</span></div>
-          <div class="full f">Ideal vibe<div class="seg" id="me-vibe"></div></div>
+          <div class="full"><strong>Your answers</strong> <span class="muted">· these decide the budget and the kind of activity</span></div>
+          <div class="full f">When it's over, how do you want to feel?<div class="feels" id="me-after"></div></div>
           <div class="f">Indoors or outdoors<div class="seg" id="me-place"></div></div>
           <label class="f">The most you can spend per person
             <span class="money"><span class="cur"></span><input type="number" id="me-budget" min="1" step="1" inputmode="numeric" placeholder="e.g. 50"></span>
           </label>
           <div class="full form-actions">
-            <button class="btn" type="submit" id="me-save">Save my preferences</button>
+            <button class="btn" type="submit" id="me-save">Save my answers</button>
             <span class="note" id="me-note"></span>
           </div>
         </form>
       </section>
 
       <section class="panel">
-        <div class="panel-head"><h2>What we're planning</h2><span class="muted">Anyone can edit this, then everyone agrees it again</span></div>
+        <div class="panel-head"><h2>Where and what</h2><span class="muted">Anyone can edit this, then everyone agrees it again</span></div>
         <form class="grid" id="details-form">
           <label class="f">Kind of plan<select id="kind"></select></label>
           <label class="f">Name it<input type="text" id="ptitle" maxlength="60" placeholder="e.g. Sam's birthday"></label>
@@ -323,14 +352,19 @@
 <script>
 const KINDS = { birthday: ["Birthday", "Town or city", true], outing: ["Day or night out", "Town or city", true], dinner: ["Dinner or meal", "Town or city", true],
   trip: ["Trip or holiday", "Travelling from", false], other: ["Something else", "Where", false] };
-const VIBES = ["chill", "adventurous", "fancy", "party", "creative"];
 const SETTINGS = ["city", "suburb", "town", "rural"];
 const FEATURES = ["beach", "mountains", "lake"];
 const HEMIS = { north: "North of the tropics", south: "South of the tropics", tropical: "Tropical" };
 const PLACES = { indoor: "Indoors", outdoor: "Outdoors", either: "Either" };
 const CURRENCIES = { "£": "£ Pound", "€": "€ Euro", "$": "$ Dollar", "₹": "₹ Rupee" };
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const FACES = [["😣", "No way"], ["😕", "Meh"], ["🙂", "OK"], ["😀", "Good"], ["😍", "Love it"]];
+const AFTER = {
+  spent: ["Physically spent", "so you sleep deeply"],
+  sharp: ["Mentally sharp", "because you solved something"],
+  unplugged: ["Unplugged", "your brain's been redlining all week"],
+  connected: ["Closer to each other", "proper time together"],
+  buzzing: ["Buzzing", "a big one to remember"],
+};
 const ICONS = {
   google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.5c-.5-1.4-.8-2.9-.8-4.5s.3-3.1.8-4.5l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-5 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.8l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>',
   apple: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.7c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.77-3.32-1.8-1.41-.14-2.76.83-3.48.83-.72 0-1.82-.81-3-.79-1.54.02-2.96.9-3.76 2.27-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.23-.02 2.01-1.12 2.77-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.4-.92-2.38-3.68zM14.1 5.95c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.66 1.37-.58.68-1.09 1.76-.96 2.8 1.02.08 2.05-.52 2.68-1.28z"/></svg>',
@@ -355,7 +389,7 @@ const store = {
 let account = { user: null, providers: [] };
 let myName = store.get("gp-name") || "";
 let code = (new URLSearchParams(location.search).get("room") || "").toUpperCase();
-let S = null, seen = 0, myRatings = {}, ratingRound = -1, pollTimer = null, pollError = "";
+let S = null, seen = 0, pollTimer = null, pollError = "";
 const nameMode = () => account.providers.length === 0;
 
 async function api(path, body) {
@@ -432,32 +466,84 @@ function renderHeader() {
 }
 
 function renderSteps() {
-  const b = S.budget, r = S.results, so = r?.signoff;
+  const b = S.budget, pa = S.plan_agreement, a = S.after;
   const steps = [
-    ["Plan approved", S.details.kind && S.details.place ? `${S.plan_agreement.agreed} of ${S.plan_agreement.total}` : "to do", S.plan_agreement.all_agreed],
-    ["Everyone's in", `${b.taking_part} joined`, b.taking_part > 0 && b.missing === 0],
-    ["Budget agreed", b.limit == null ? "no budgets yet" : `${b.agreed} of ${b.taking_part}`, b.all_agreed],
-    ["Vote", S.phase === "planning" ? "not started" : `${S.rated} of ${b.taking_part}`, !!r],
-    ["All happy", `${so ? so.in.length : 0} of ${b.taking_part} in`, !!r?.decided],
+    ["Location agreed", S.details.kind && S.details.place ? `${pa.agreed} of ${pa.total}` : "to do", pa.all_agreed],
+    ["Budget agreed", b.limit == null ? "no budgets yet" : `${b.agreed} of ${S.member_count}`, b.all_agreed && !S.feed_blockers.length],
+    ["How we want to feel", `${a.answered} of ${a.total} answered`, a.total > 0 && a.answered >= a.total],
+    ["Suggestions", `${S.feed.length} on the feed`, S.feed.length > 0],
+    ["In the plan", `${S.agreed_plan.length} agreed`, S.agreed_plan.length > 0],
   ];
   const now = steps.findIndex((s) => !s[2]);
   $("steps").replaceChildren(...steps.map(([label, sub, done], i) =>
     el("li", { class: `step${done ? " done" : ""}${i === now ? " now" : ""}` }, el("b", {}, label), el("span", {}, sub))));
 }
 
-function ideaRow(s, i) {
-  const thumbs = S.you?.taking_part ? el("div", { class: "thumbs" },
-    el("button", { class: "thumb up", "aria-pressed": String(s.mine > 0), "aria-label": `Like ${s.name}`, onclick: () => act("feedback", { idea: s.name, signal: s.mine > 0 ? 0 : 1 }).catch(say) }, "👍"),
-    el("button", { class: "thumb down", "aria-pressed": String(s.mine < 0), "aria-label": `Rule out ${s.name}`, onclick: () => act("feedback", { idea: s.name, signal: s.mine < 0 ? 0 : -1 }).catch(say) }, "👎")) : null;
+function ideaLinks(s) {
   const links = [];
   if (s.map_url) links.push(el("a", { href: s.map_url, target: "_blank", rel: "noopener noreferrer" }, S.details.kind === "trip" ? "See on map ↗" : "Find places nearby ↗"));
   for (const v of s.venues || []) links.push(el("span", {}, "📍 ", el("a", { href: v.url, target: "_blank", rel: "noopener noreferrer" }, v.name), v.note ? ` · ${v.note}` : ""));
+  return links;
+}
+const costText = (s) => `${s.estimate ? "~" : ""}${money(s.cost_pp)} pp`;
+
+/* One search result. Suggesting it puts it on the feed for everyone. */
+function ideaRow(s, i) {
+  const open = !S.feed_blockers.length && S.you?.taking_part;
+  const button = s.on_feed ? el("span", { class: "tag yes suggest" }, "On the feed")
+    : el("button", { class: "btn small suggest", disabled: !open, onclick: () => act("suggest", { idea: s.name }).catch(say) }, "Suggest");
   return el("li", { class: "idea" },
     el("div", { class: "rank" }, String(i + 1)),
     el("div", { class: "name" }, s.name),
-    el("div", { class: "cost", title: s.estimate ? "Estimated cost per person" : "Cost per person" }, `${s.estimate ? "~" : ""}${money(s.cost_pp)} pp`),
+    el("div", { class: "cost", title: s.estimate ? "Estimated cost per person" : "Cost per person" }, costText(s)),
     el("div", { class: "why" }, [s.note, (s.reasons || []).join(" · ")].filter(Boolean).join(" — ") || "a solid all-rounder"),
-    thumbs, el("div", { class: "meta" }, links));
+    button, el("div", { class: "meta" }, ideaLinks(s)));
+}
+
+/* One suggestion on the feed, with everyone's ticks and crosses. */
+function feedRow(f) {
+  const vote = (agree) => act("feed-vote", { id: f.id, agree: f.you === (agree ? "yes" : "no") ? null : agree }).catch(say);
+  const canVote = !S.feed_blockers.length && !!S.you?.active;
+  const status = f.gone ? el("span", { class: "tag no" }, "no longer fits the plan") : f.over_budget ? el("span", { class: "tag no" }, "over the budget")
+    : f.approved ? el("span", { class: "tag yes" }, "In the plan") : null;
+  const who = [f.yes_names.length ? `✓ ${f.yes_names.join(", ")}` : null, f.no_names.length ? `✗ ${f.no_names.join(", ")}` : null].filter(Boolean).join("   ");
+  return el("li", { class: `post${f.approved ? " in" : ""}` },
+    el("div", { class: "name" }, f.name, " ", el("span", { class: "muted", style: "font-weight:400;font-size:13px" }, f.cost_pp == null ? "" : `· ${costText(f)}`)),
+    el("div", { class: "yn" },
+      el("button", { class: "y", "aria-pressed": String(f.you === "yes"), "aria-label": `Agree to ${f.name}`, disabled: !canVote, onclick: () => vote(true) }, "✓"),
+      el("button", { class: "n", "aria-pressed": String(f.you === "no"), "aria-label": `Don't agree to ${f.name}`, disabled: !canVote, onclick: () => vote(false) }, "✗")),
+    el("div", { class: "by" }, `Suggested by ${f.by}`, f.after.length ? ` · leaves you ${f.after.join(" / ").toLowerCase()}` : ""),
+    el("div", { class: "tally" },
+      el("div", { class: "bar" }, el("i", { style: `width:${Math.min(100, (f.yes / S.member_count) * 100)}%` })),
+      el("div", {}, `${f.yes} of ${S.member_count} agree · needs ${S.majority}`, who ? ` · ${who}` : "", " ", status)),
+    el("div", { class: "meta" }, ideaLinks(f)));
+}
+
+function afterCard() {
+  const a = S.after;
+  const tags = a.options.filter((o) => a.counts[o.key]).sort((x, y) => a.counts[y.key] - a.counts[x.key])
+    .map((o) => el("span", { class: `tag ${o.key === a.top ? "yes" : ""}` }, `${o.label} · ${a.counts[o.key]}`));
+  return el("div", { class: "budget" },
+    el("div", { class: "amount", style: "font-size:24px" }, `${a.answered}/${a.total}`, el("small", {}, "answered")),
+    el("div", {}, el("strong", {}, a.top ? `The group mostly wants to feel: ${a.top_label.toLowerCase()}` : "How does everyone want to feel when it's over?"),
+      el("div", { class: "muted", style: "font-size:13px" }, a.top ? "The search below works backwards from that, so those kinds of activity come first."
+        : "Don't pick an activity yet. Answer how you want to feel afterwards in \"Your answers\" below, and the right kind of activity follows.")),
+    el("div", { class: "actions" }, el("div", { class: "agree" }, tags.length ? tags : el("span", { class: "muted" }, "No answers yet"))));
+}
+
+function agreedPlan() {
+  const items = S.agreed_plan;
+  if (!items.length) return null;
+  const total = items.reduce((t, f) => t + (f.cost_pp || 0), 0);
+  const over = S.budget.limit != null && total > S.budget.limit;
+  return [
+    el("h3", { class: "sub" }, "The plan", el("span", {}, "agreed by a majority, in the order it was approved")),
+    el("ol", { class: "agreed" }, items.map((f) => el("li", {},
+      el("span", { class: "name" }, f.name), el("span", { class: "cost" }, costText(f)),
+      el("span", { class: "meta" }, `${f.yes} of ${S.member_count} agreed`, ...ideaLinks(f))))),
+    items.length > 1 ? el("p", { class: "muted", style: "margin:8px 0 0;font-size:13px" },
+      `All of it comes to about ${money(total)} per person.${over ? ` That's over the ${money(S.budget.limit)} budget, so you may not want to do everything.` : ""}`) : null,
+  ];
 }
 
 /* The plan summary: everything saved, and everyone's tick or cross beside it. */
@@ -486,12 +572,12 @@ function planVotes() {
 
 function planAnswer() {
   const pa = S.plan_agreement;
-  if (pa.all_agreed) return el("div", { class: "approved" }, `✓ Plan approved by all ${pa.total}. Next: everyone's budget.`);
+  if (pa.all_agreed) return el("div", { class: "approved" }, `✓ Location and plan approved by all ${pa.total}. Next: everyone's budget.`);
   const vote = (agree) => act("agree-details", { version: pa.version, agree }).catch(say);
   return el("div", { class: "vote-btns" },
     el("button", { class: "btn good", "aria-pressed": String(pa.you === "yes"), onclick: () => vote(true) }, "✓ I agree"),
     el("button", { class: "btn bad", "aria-pressed": String(pa.you === "no"), onclick: () => vote(false) }, "✗ I don't agree"),
-    el("span", { class: "muted", style: "font-size:13px" }, pa.disagreed ? "Someone doesn't agree yet. Talk it over in the chat, then change the details in \"What we're planning\"." : "Approved once everyone ticks ✓."));
+    el("span", { class: "muted", style: "font-size:13px" }, pa.disagreed ? "Someone doesn't agree yet. Talk it over in the chat, then change the details in \"Where and what\"." : "Approved once everyone ticks ✓."));
 }
 
 let shownVersion = null;
@@ -518,7 +604,7 @@ function planCard() {
     el("span", { class: `tag ${p.plan_vote === "yes" ? "yes" : p.plan_vote === "no" ? "no" : ""}` }, `${p.plan_vote === "yes" ? "✓" : p.plan_vote === "no" ? "✗" : "…"} ${p.is_you ? "You" : p.name}`));
   return el("div", { class: "budget" },
     el("div", { class: "amount", style: "font-size:24px" }, pa.all_agreed ? "✓" : `${pa.agreed}/${pa.total}`, el("small", {}, pa.all_agreed ? "approved" : "agreed")),
-    el("div", {}, el("strong", {}, pa.all_agreed ? "Plan approved by everyone" : "Does everyone agree on the plan?"),
+    el("div", {}, el("strong", {}, pa.all_agreed ? "Location agreed by everyone" : "Does everyone agree on where?"),
       el("div", { class: "muted", style: "font-size:13px" }, facts.join(" · "))),
     el("div", { class: "actions" }, el("div", { class: "agree" }, marks),
       el("button", { class: pa.all_agreed || pa.you ? "btn ghost small" : "btn good small", onclick: openPlanDialog }, pa.all_agreed || pa.you ? "View plan summary" : "Review and answer")));
@@ -529,9 +615,9 @@ function budgetCard() {
   const tags = S.people.filter((p) => p.joined && p.active && !p.guest).map((p) =>
     el("span", { class: `tag ${p.agreed ? "yes" : ""}` }, `${p.is_you ? "You" : p.name} · ${p.budget_max == null ? "no budget yet" : p.agreed ? "agreed" : "to confirm"}`));
   let action;
-  if (!you.taking_part) action = el("span", { class: "muted" }, "Save your preferences below to take part.");
-  else if (!S.plan_agreement.all_agreed) action = el("span", { class: "muted" }, "Once everyone agrees the plan, you can agree the budget.");
-  else if (you.budget_max == null) action = el("span", { class: "muted" }, "Add the most you can spend in your preferences below.");
+  if (!you.taking_part) action = el("span", { class: "muted" }, "Save your answers below to take part.");
+  else if (!S.plan_agreement.all_agreed) action = el("span", { class: "muted" }, "Once everyone agrees the location, you can agree the budget.");
+  else if (you.budget_max == null) action = el("span", { class: "muted" }, "Add the most you can spend in your answers below.");
   else if (you.agreed) action = el("span", { class: "tag yes" }, `You agreed to ${money(b.limit)} per person`);
   else action = el("button", { class: "btn good small", onclick: () => act("agree", { amount: b.limit }).catch(say) }, `I agree to ${money(b.limit)} per person`);
   const setters = S.people.filter((p) => p.sets_budget).map((p) => (p.is_you ? "you" : p.name));
@@ -549,112 +635,56 @@ function addIdeaForm() {
     el("label", { class: "f full" }, "Idea", el("input", { type: "text", id: id("name"), maxlength: "70", placeholder: S.details.kind === "trip" ? "e.g. 4 days in Kraków" : "e.g. Crazy golf and burgers" })),
     el("label", { class: "f" }, "Cost per person", el("span", { class: "money" }, el("span", {}, S.details.currency), el("input", { type: "number", id: id("cost"), min: "0", step: "1", placeholder: "e.g. 30" }))),
     el("label", { class: "f" }, "Indoors or outdoors", el("select", { id: id("out") }, el("option", { value: "" }, "Either / both"), el("option", { value: "in" }, "Indoors"), el("option", { value: "out" }, "Outdoors"))),
-    el("div", { class: "f full" }, "Vibe", el("div", { class: "seg" }, VIBES.flatMap((v) => [el("input", { type: "checkbox", id: id(`v-${v}`), value: v }), el("label", { for: id(`v-${v}`) }, v)]))),
-    el("div", { class: "full form-actions" }, el("button", { class: "btn small", type: "submit" }, "Add idea"), el("span", { class: "note", id: id("note") })));
+    el("div", { class: "f full" }, "How does it leave you feeling?", el("div", { class: "seg" }, Object.entries(AFTER).flatMap(([k, v]) => [el("input", { type: "checkbox", id: id(`v-${k}`), value: k }), el("label", { for: id(`v-${k}`) }, v[0])]))),
+    el("div", { class: "full form-actions" }, el("button", { class: "btn small", type: "submit" }, "Suggest it"), el("span", { class: "note", id: id("note") })));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const out = $(id("out")).value;
     act("idea", { idea: $(id("name")).value.trim(), cost_pp: $(id("cost")).value === "" ? null : Number($(id("cost")).value),
-      vibes: VIBES.filter((v) => $(id(`v-${v}`)).checked), outdoor: out === "" ? null : out === "out" })
+      after: Object.keys(AFTER).filter((k) => $(id(`v-${k}`)).checked), outdoor: out === "" ? null : out === "out" })
       .then(() => { form.closest("details").open = false; stageKey = ""; renderStage(); })
       .catch((err) => { $(id("note")).textContent = err.message; });
   });
-  return el("details", { class: "add" }, el("summary", {}, "Add your own idea"), form);
+  return el("details", { class: "add" }, el("summary", {}, "Suggest your own idea"), form);
 }
 
 let stageKey = "";
 function renderStage() {
-  const key = JSON.stringify([S.plan_agreement, S.phase, S.paused, S.ideas, S.finalists, S.results, S.budget, S.people, S.you, S.details, S.vote_blockers, myRatings]);
+  const key = JSON.stringify([S.plan_agreement, S.ideas, S.budget, S.people, S.you, S.details, S.after, S.feed, S.agreed_plan, S.feed_blockers]);
   const box = $("stage");
   if (key === stageKey) return;
-  if (S.phase === "planning" && box.querySelector("details.add[open]") && $("ni-name")?.value.trim()) return; // don't wipe a half-typed idea
+  if (box.querySelector("details.add[open]") && $("ni-name")?.value.trim()) return; // don't wipe a half-typed idea
   stageKey = key;
-  if (S.results) return renderResults(box);
-  if (S.phase === "voting") return renderVoting(box);
   if (!S.details.kind || !S.details.place) {
-    put(box, el("div", { class: "panel-head" }, el("h2", {}, "Let's plan something")),
-      el("div", { class: "empty" }, el("strong", {}, "What are we planning?"),
-        el("span", {}, "A birthday, a dinner, a night out, a trip, anything. Fill in what you're planning below, or just tell the planner bot in the chat."),
+    put(box, el("div", { class: "panel-head" }, el("h2", {}, "Where are we going?")),
+      el("div", { class: "empty" }, el("strong", {}, "Start with the location"),
+        el("span", {}, "Where you go matters most, so that gets agreed first. Fill in the plan below, or just tell the planner bot in the chat."),
         el("button", { class: "btn ghost", onclick: () => $("kind").focus() }, "Set up the plan")));
     return;
   }
-  const n = S.people.filter((p) => p.joined && p.active).length;
-  const list = S.ideas.length ? el("ol", { class: "ideas" }, S.ideas.map(ideaRow))
-    : el("div", { class: "empty" }, el("strong", {}, S.needs_area ? "Pick the kind of area" : "No ideas yet"),
-        el("span", {}, S.needs_area ? "Choose city, suburb, town or rural in the plan details below."
-          : KINDS[S.details.kind][2] ? "Nothing fits the budget yet. Add your own idea, or ask the bot." : "Ask the planner bot for suggestions in the chat, or add your own idea below."));
-  const blockers = S.vote_blockers;
-  put(box, 
-    el("div", { class: "panel-head" }, el("h2", {}, "Ideas"), el("span", { class: "muted" }, `Ranked for ${n} ${n === 1 ? "person" : "people"}`)),
-    planCard(),
-    budgetCard(),
-    S.paused ? el("p", { class: "paused" }, "Voting is paused until everyone agrees the current plan and budget. Ratings already given are kept.") : null,
-    el("p", { class: "muted", style: "margin:12px 0 0" }, `👍 pulls similar ideas up, 👎 rules one out.${S.over_budget ? ` ${S.over_budget} idea${S.over_budget === 1 ? " is" : "s are"} hidden for going over budget.` : ""}`),
-    list, addIdeaForm(),
-    el("div", { class: "vote-bar" },
-      el("button", { class: "btn", onclick: () => act("start-vote").catch(say), disabled: blockers.length > 0 || !S.you?.taking_part }, "Start the vote"),
-      el("span", { class: "blocker" }, blockers.length ? `Can't vote yet: ${blockers.join("; ")}.` : `Everyone rates the top ${Math.min(6, S.ideas.length)}.`)));
-}
-
-function renderVoting(box) {
-  if (ratingRound !== S.round) { myRatings = { ...(S.you?.my_ratings || {}) }; ratingRound = S.round; }
-  const done = S.finalists.every((f) => Number.isInteger(myRatings[f.name]));
-  const canRate = !!S.you?.taking_part;
-  put(box, 
-    el("div", { class: "panel-head" }, el("h2", {}, "Rate the finalists"), el("span", { class: "muted" }, `${S.rated} of ${S.budget.taking_part} done`)),
-    el("p", { class: "muted", style: "margin:4px 0 12px" }, "Rate every option honestly. \"No way\" rules an option out for the whole group. The winner is the option the least-happy person likes most, so nobody gets stuck with something they hate."),
-    el("div", { style: "display:grid;gap:10px" }, S.finalists.map((f) => el("div", { class: "rate" },
-      el("div", {}, el("span", { class: "name" }, f.name), " ", el("span", { class: "muted" }, `· ${money(f.cost_pp)} pp`)),
-      el("div", { class: "faces", role: "group", "aria-label": `Rate ${f.name}` }, FACES.map(([emo, label], v) =>
-        el("button", { class: `face${v === 0 ? " veto" : ""}`, "aria-pressed": String(myRatings[f.name] === v), disabled: !canRate,
-          onclick: () => { myRatings[f.name] = v; stageKey = ""; renderStage(); } }, emo, el("small", {}, label))))))),
-    el("div", { class: "vote-bar" },
-      el("button", { class: "btn", onclick: () => act("rate", { ratings: myRatings }).catch(say), disabled: !done || !canRate },
-        S.you?.rated ? "Update my ratings" : done ? "Submit my ratings" : "Rate them all to submit"),
-      S.rated ? el("button", { class: "btn ghost", onclick: () => act("close").catch(say), disabled: !canRate }, "Close voting now") : null,
-      el("button", { class: "linkbtn", onclick: () => act("back").catch(say), disabled: !canRate }, "Back to planning"),
-      !canRate ? el("span", { class: "blocker" }, "Save your preferences to join the vote.") : null));
-}
-
-function renderResults(box) {
-  const r = S.results, w = r.winner, so = r.signoff;
-  const youIn = so.in.includes(S.you?.name), youOut = so.out.includes(S.you?.name);
-  const mapLink = (url) => (url ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, S.details.kind === "trip" ? "See on map ↗" : "Find places nearby ↗") : null);
-  let top;
-  if (r.decided) {
-    top = el("div", { class: "decided" }, el("div", { class: "muted" }, "Everyone's in 🎉"), el("div", { class: "big" }, w.name),
-      el("div", {}, `${money(w.cost_pp)} per person, within the budget everyone agreed.`), mapLink(w.map_url));
-  } else if (w) {
-    top = el("div", {},
-      el("div", { class: "winner" }, el("div", { class: "label" }, "Best for everyone"), el("div", { class: "big" }, w.name),
-        el("div", { style: "font-size:14px;opacity:.85" }, `Nobody ruled it out. The least-happy rating is ${FACES[w.min][0]} ${FACES[w.min][1]}. ${money(w.cost_pp)} pp.`), mapLink(w.map_url)),
-      el("div", { class: "signoff" }, el("strong", {}, "Is everyone happy with this?"),
-        el("div", { class: "agree" }, ...so.in.map((n) => el("span", { class: "tag yes" }, `${n} · in`)), ...so.out.map((n) => el("span", { class: "tag no" }, `${n} · not happy`)),
-          ...so.waiting.map((n) => el("span", { class: "tag" }, `${n} · waiting`))),
-        S.you?.taking_part ? el("div", { class: "form-actions" },
-          el("button", { class: "btn good", onclick: () => act("signoff", { in: true }).catch(say) }, youIn ? "You're in ✓" : "I'm in"),
-          el("button", { class: "btn ghost", onclick: () => act("signoff", { in: false }).catch(say) }, youOut ? "You're not happy" : "Not happy")) : null,
-        so.out.length ? el("div", { class: "muted", style: "font-size:13px" }, `${so.out.join(", ")} isn't happy yet. Talk it over in the chat, then plan again.`) : null));
-  } else {
-    top = el("div", { class: "winner" }, el("div", { class: "label" }, "No agreement yet"), el("div", { class: "big" }, "Every option was ruled out by someone"),
-      el("div", { style: "font-size:14px;opacity:.85" }, "Go back to planning, talk in the chat about what would work, and add new ideas."));
-  }
-  const table = el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, el("th", {}, "Option"), el("th", { class: "num" }, "Least happy"), el("th", { class: "num" }, "Total"), el("th", {}, "Ruled out by"))),
-    el("tbody", {}, r.rows.map((row) => el("tr", { class: row.vetoed_by.length ? "out" : "" },
-      el("td", {}, row.name), el("td", { class: "num" }, row.min == null ? "–" : `${FACES[row.min][0]} ${FACES[row.min][1]}`),
-      el("td", { class: "num" }, String(row.total)), el("td", {}, row.vetoed_by.join(", ") || "–"))))));
-  put(box, el("div", { class: "panel-head" }, el("h2", {}, r.decided ? "Decided" : "Results"), el("span", { class: "muted" }, `${S.rated} rated`)),
-    top, table, el("div", { class: "vote-bar" },
-      el("button", { class: "btn ghost", onclick: () => act("back").catch(say), disabled: !S.you?.taking_part }, r.decided ? "Plan something new" : "Back to planning"),
-      !r.decided && w ? el("span", { class: "blocker" }, "It's decided once everyone taps \"I'm in\".") : null));
+  const open = !S.feed_blockers.length;
+  const results = S.ideas.length ? el("ol", { class: "ideas" }, S.ideas.map(ideaRow))
+    : el("div", { class: "empty" }, el("strong", {}, S.needs_area ? "Pick the kind of area" : "Nothing found yet"),
+        el("span", {}, S.needs_area ? "Choose city, suburb, town or rural under \"Where and what\" below."
+          : KINDS[S.details.kind][2] ? "Nothing fits the budget yet. Suggest your own idea, or ask the bot." : "Ask the planner bot for ideas in the chat, or suggest your own below."));
+  const feed = S.feed.length ? el("ol", { class: "feed" }, S.feed.map(feedRow))
+    : el("p", { class: "muted", style: "margin:8px 0 0" }, open ? "Nothing suggested yet. Tap Suggest on an idea below, or add your own." : `The feed opens once ${S.feed_blockers[0]}.`);
+  put(box,
+    el("div", { class: "panel-head" }, el("h2", {}, "Decide together"), el("span", { class: "muted" }, "location, then budget, then what to do")),
+    planCard(), budgetCard(), afterCard(),
+    agreedPlan(),
+    el("h3", { class: "sub" }, "Feed", el("span", {}, `more than half agree (${S.majority} of ${S.member_count}) and it goes in the plan`)),
+    feed,
+    el("h3", { class: "sub" }, "Search results", el("span", {}, S.after.top ? `ranked for feeling ${S.after.top_label.toLowerCase()}` : "ranked for this group")),
+    S.over_budget ? el("p", { class: "muted", style: "margin:6px 0 0;font-size:13px" }, `${S.over_budget} idea${S.over_budget === 1 ? " is" : "s are"} hidden for going over budget.`) : null,
+    results, addIdeaForm());
 }
 
 function renderPeople() {
   const b = S.budget;
   const rows = S.people.map((p) => {
     const status = !p.active ? el("span", { class: "tag" }, "not taking part") : p.guest ? el("span", { class: "tag" }, "added in chat")
-      : !p.joined ? el("span", { class: "tag" }, "no preferences yet") : p.budget_max == null ? el("span", { class: "tag" }, "no budget yet")
+      : !p.joined ? el("span", { class: "tag" }, "no answers yet") : p.budget_max == null ? el("span", { class: "tag" }, "no budget yet")
       : p.agreed ? el("span", { class: "tag yes" }, "agreed budget") : el("span", { class: "tag" }, "to agree budget");
     const actions = [];
     if (!p.guest && p.id) {
@@ -666,7 +696,7 @@ function renderPeople() {
       el("span", { class: "who" }, p.name, p.is_you ? el("small", {}, " (you)") : null, p.is_host ? el("small", {}, " · host") : null),
       el("span", { class: `spend${p.budget_max == null ? " none" : ""}` }, p.budget_max == null ? "–" : money(p.budget_max),
         el("small", {}, p.budget_max == null ? "no budget yet" : p.sets_budget ? "sets the group budget" : "max per person")),
-      el("span", { class: "prefs" }, [p.vibe, PLACES[p.place]?.toLowerCase()].filter(Boolean).join(" · "), status, ...actions));
+      el("span", { class: "prefs" }, [p.after_label ? `wants to feel ${p.after_label.toLowerCase()}` : p.vibe, PLACES[p.place]?.toLowerCase()].filter(Boolean).join(" · "), status, ...actions));
   });
   $("people").replaceChildren(...rows);
   $("people-count").textContent = `${rows.length} ${rows.length === 1 ? "person" : "people"}`;
@@ -689,7 +719,9 @@ function seg(id, name, values, labels, type = "radio") {
   $(id).replaceChildren(...values.flatMap((v) => [el("input", { type, name, id: `${id}-${v}`, value: String(v) }), el("label", { for: `${id}-${v}` }, labels ? labels[v] : v)]));
 }
 function options(id, entries) { $(id).replaceChildren(...entries.map(([v, t]) => el("option", { value: v }, t))); }
-seg("me-vibe", "vibe", VIBES);
+$("me-after").replaceChildren(...Object.entries(AFTER).flatMap(([k, v]) => [
+  el("input", { type: "radio", name: "after", id: `me-after-${k}`, value: k }),
+  el("label", { for: `me-after-${k}` }, v[0], el("small", {}, v[1]))]));
 seg("me-place", "place", Object.keys(PLACES), PLACES);
 seg("features", "features", FEATURES, null, "checkbox");
 options("kind", [["", "Choose…"], ...Object.entries(KINDS).map(([k, v]) => [k, v[0]])]);
@@ -717,11 +749,11 @@ function fillForms() {
   for (const c of document.querySelectorAll(".cur")) c.textContent = d.currency;
   const you = S.you;
   if (!meDirty && you) {
-    if (you.vibe) $(`me-vibe-${you.vibe}`).checked = true;
+    if (you.after) $(`me-after-${you.after}`).checked = true;
     if (you.place) $(`me-place-${you.place}`).checked = true;
     $("me-budget").value = you.budget_max ?? "";
   }
-  $("me-save").textContent = you?.vibe ? "Update my preferences" : "Join with these preferences";
+  $("me-save").textContent = you?.vibe ? "Update my answers" : "Save my answers";
 }
 $("details-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -733,10 +765,10 @@ $("details-form").addEventListener("submit", (e) => {
 });
 $("me-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  const v = document.querySelector("input[name=vibe]:checked"), pl = document.querySelector("input[name=place]:checked");
+  const v = document.querySelector("input[name=after]:checked"), pl = document.querySelector("input[name=place]:checked");
   const raw = $("me-budget").value;
-  if (!v || !pl) { $("me-note").textContent = "Pick a vibe and indoors or outdoors."; return; }
-  act("preferences", { vibe: v.value, place: pl.value, budget_max: raw === "" ? null : Number(raw) })
+  if (!v || !pl) { $("me-note").textContent = "Pick how you want to feel afterwards, and indoors or outdoors."; return; }
+  act("preferences", { after: v.value, place: pl.value, budget_max: raw === "" ? null : Number(raw) })
     .then(() => { meDirty = false; $("me-note").textContent = raw === "" ? "Saved. Add a budget so the group can agree one." : "Saved."; })
     .catch((err) => { $("me-note").textContent = err.message; });
 });

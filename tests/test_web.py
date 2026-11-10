@@ -130,30 +130,72 @@ class WebAppTests(unittest.TestCase):
     def test_bot_plans_with_tools_and_can_only_act_for_senders(self):
         client = FakeClient([
             ([tool("set_plan", {"kind": "trip", "title": "Summer trip", "place": "London", "currency": "£"}, "t1"),
-              tool("set_preferences", {"person": "Ana", "vibe": "adventurous", "place": "outdoor", "budget_max": 650}, "t2"),
+              tool("set_preferences", {"person": "Ana", "after_state": "spent", "place": "outdoor", "budget_max": 650}, "t2"),
               tool("agree_budget", {"person": "Alex"}, "t3"),          # Alex didn't write: refused
-              tool("add_idea", {"name": "4 days in Krakow", "cost_per_person": 450, "vibes": ["chill"], "note": "Cheap flights"}, "t4"),
-              tool("get_suggestions", {}, "t5")], "tool_use"),
+              tool("add_idea", {"name": "4 days in Krakow", "cost_per_person": 450, "after_states": ["unplugged"], "note": "Cheap flights"}, "t4"),
+              tool("suggest_idea", {"idea": "4 days in Krakow"}, "t5"),  # feed isn't open yet: refused
+              tool("get_suggestions", {}, "t6")], "tool_use"),
             ([text("Saved! Krakow fits the budget.")], "end_turn"),
         ])
         self.start(client)
         self.new_room("Alex", "Ana")
-        self.as_("Ana")[0]("messages", text="Trip from London! I'm adventurous, can do £650")
+        self.as_("Ana")[0]("messages", text="Trip from London! I want to be worn out after, can do £650")
         self.wait_for_bot()
 
         view = self.as_("Ana")[1]()
         self.assertEqual(view["details"]["title"], "Summer trip")
-        self.assertEqual(view["you"]["budget_max"], 650)
+        self.assertEqual((view["you"]["budget_max"], view["you"]["after"]), (650, "spent"))
         self.assertEqual([i["name"] for i in view["ideas"]], ["4 days in Krakow"])
         self.assertEqual(view["chat"][-1]["text"], "Saved! Krakow fits the budget.")
         results = client.requests[1]["messages"][-1]["content"]
         self.assertTrue(results[2]["is_error"])
         self.assertIn("only act for people who wrote", results[2]["content"])
-        self.assertIn('"ideas": [{"name": "4 days in Krakow"', results[4]["content"])
+        self.assertTrue(results[4]["is_error"])
+        self.assertIn("agree the location", results[4]["content"])
+        self.assertIn('"groupMostlyWantsToFeel": "spent"', results[5]["content"])
         # The bot saw the plan state and who wrote.
         first = client.requests[0]["messages"][-1]["content"]
         self.assertIn("(Current plan, from the app:", first)
         self.assertIn("[Ana]: Trip from London!", first)
+
+    def test_feed_and_majority_over_http(self):
+        self.start()
+        self.new_room("Alex", "Ana", "Ben")
+        alex, ana, ben = (self.as_(n)[0] for n in ("Alex", "Ana", "Ben"))
+        alex("details", kind="outing", title="Saturday", place="Leeds", setting="city", month=6, hemisphere="north")
+        for p, feel in ((alex, "unplugged"), (ana, "unplugged"), (ben, "buzzing")):
+            self.assertEqual(p("preferences", after=feel, place="either", budget_max=50)[0], 200)
+        # Location, then amount: suggesting is refused until both are agreed.
+        self.assertIn("agree the location", alex("suggest", idea="Spa day")[1]["error"])
+        for p in (ana, ben):
+            p("agree-details")
+        self.assertIn("agree the budget", alex("suggest", idea="Picnic in the park")[1]["error"])
+        for p in (alex, ana, ben):
+            p("agree", amount=50)
+
+        view = self.as_("Alex")[1]()
+        self.assertEqual((view["after"]["top"], view["after"]["answered"], view["majority"]), ("unplugged", 3, 2))
+        top = view["ideas"][0]
+        self.assertIn("leaves you unplugged", " ".join(top["reasons"]))
+        self.assertEqual(alex("suggest", idea=top["name"])[0], 200)
+        self.assertEqual(alex("suggest", idea=top["name"])[0], 400)       # already on the feed
+        self.assertEqual(ben("idea", idea="Crazy golf", cost_pp=12, after=["buzzing"])[0], 200)   # own idea goes on the feed
+        view = self.as_("Ana")[1]()
+        self.assertEqual([f["name"] for f in view["feed"]], ["Crazy golf", top["name"]])    # newest first
+        self.assertEqual(view["agreed_plan"], [])
+        golf, first = (f["id"] for f in view["feed"])
+        ana("feed-vote", id=golf, agree=True)          # 2 of 3: golf approved first
+        ana("feed-vote", id=first, agree=True)         # then the other
+        view = self.as_("Ben")[1]()
+        self.assertEqual([f["name"] for f in view["agreed_plan"]], ["Crazy golf", top["name"]])   # order approved
+        chat = " ".join(m["text"] for m in view["chat"])
+        self.assertIn("Ben suggested Crazy golf", chat)
+        self.assertIn("✓ Crazy golf is in the plan (2 of 3 agreed)", chat)
+        # A change of mind drops it back out.
+        ana("feed-vote", id=golf, agree=False)
+        view = self.as_("Ben")[1]()
+        self.assertEqual([f["name"] for f in view["agreed_plan"]], [top["name"]])
+        self.assertEqual(next(f for f in view["feed"] if f["id"] == golf)["no_names"], ["Ana"])
 
     def test_api_failure_keeps_room_usable(self):
         class Broken:

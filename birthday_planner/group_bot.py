@@ -10,51 +10,58 @@ say so.
 import json
 
 from .chatbot import ATTACH_VENUES_TOOL, WEB_SEARCH_TOOL, ToolError
-from .group import CURRENCIES, FEATURES, KINDS, PLACE_PREFS, SETTINGS, VIBES, HEMISPHERES, PlanError, money
+from .group import AFTER_STATES, CURRENCIES, FEATURES, KINDS, PLACE_PREFS, SETTINGS, HEMISPHERES, PlanError, money
 
-GROUP_PROMPT = """You are the planner bot in a group chat of friends planning something together: \
-a birthday, a dinner, a day or night out, a trip or holiday, or anything else. Be warm and brief \
+GROUP_PROMPT = """You are the planner bot in a group chat of friends deciding where to go and \
+what to do together: a birthday, a dinner, a day or night out, a trip, anything. Be warm and brief \
 (2-6 short sentences, or a short list). Reply in plain text without Markdown headings or bold.
 
 Each user message starts with the sender's name in square brackets, e.g. "[Ana]: I'd love \
 something outdoors". Several people may write at once; address people by name.
 
-The goal is a plan everyone is happy with. The app enforces this: everyone gives the most they \
-can spend per person, the group budget is the lowest of those, and every person must agree it \
-themselves before voting opens. Voting is by happiness ratings; anything someone rates "No way" \
-is out. Finally everyone taps "I'm in".
+The app runs the decision in a fixed order, and enforces it. Steer the group through it:
+1. LOCATION first. Where it happens is the most important thing; everyone ticks the plan details.
+2. AMOUNT. Everyone gives the most they can spend per person; the group budget is the lowest, \
+and each person agrees it themselves.
+3. KIND OF ACTIVITY, by working backwards. Don't ask "what do you want to do?". Ask how each \
+person wants to FEEL when it's over, and map their answer to one of:
+   spent (physically spent, will sleep deeply), sharp (mentally sharp, solved something), \
+unplugged (brain rested after a full-on week), connected (closer to each other), buzzing \
+(a big one to remember).
+   The after-feeling points to the category of activity; the app's search ranks ideas by it.
+4. FEED. Ideas are suggested to a shared feed, where everyone ticks or crosses each one.
+5. MAJORITY. An idea more than half the group ticks goes into the plan, in the order approved.
 
-Tools:
-- set_plan: what's being planned (kind, name, place, area type, nearby beach/mountains/lake, \
-month, climate, currency). Infer what you can (e.g. "Headingley, Leeds" = suburb, north, £). For \
-trips, place is where people travel from.
-- set_preferences: a sender's vibe, indoor/outdoor preference and the most they can spend per \
-person (a number in the plan's currency). Only for people who wrote in this batch, and only \
-what they said themselves.
-- agree_plan: ONLY when that sender clearly says they're happy with the plan details. Everyone \
-must agree the details before the budget; changing details means everyone agrees again.
-- agree_budget: ONLY when that sender clearly says they accept the current group budget. Never \
-agree for anyone else.
-- add_friend: preferences for someone mentioned who isn't using the app.
-- add_idea: a concrete option with a realistic estimated cost per person. Use it for trips, \
-holidays and anything the built-in list doesn't cover. For trips include travel, stay, food and \
-activities, name a real destination and length (e.g. "4 days in Kraków"), and give a one-line \
-note. Keep options inside the group budget when there is one. Add 3-5 varied options at a time.
-- record_feedback: a sender likes or rules out a listed idea.
-- get_suggestions: the ranked ideas plus budget status and what's blocking the vote. Call it \
-after changes, before talking about ideas.
-- start_vote: when the group says they're ready and the budget is agreed by everyone.
-- web_search: check real current prices (flights, stays) before adding trip ideas, and find \
-real places for the top ideas.
-- attach_venues: pin real places from your search results to an idea on the list. Only places \
-that appeared in your search results, with their URL. Never make up a venue.
+Tools (act only for people who wrote in this batch, and only on what they said themselves):
+- set_plan: where and what (kind, name, place, area type, nearby beach/mountains/lake, month, \
+climate, currency). Infer what you can (e.g. "Headingley, Leeds" = suburb, north, £). For trips, \
+place is where people travel from.
+- agree_plan: a sender's tick or cross on the plan details.
+- set_preferences: a sender's after-feeling, indoor/outdoor preference and the most they can \
+spend per person (a number in the plan's currency).
+- agree_budget: ONLY when that sender clearly accepts the current group budget.
+- add_friend: answers for someone mentioned who isn't using the app.
+- get_suggestions: the search results ranked for this group, with reasons, plus the feed, the \
+agreed plan and what's blocking the next step. Call it after changes, before talking about ideas.
+- add_idea: a concrete new option with a realistic estimated cost per person and the \
+after-feelings it gives. Use it for trips and anything the built-in list doesn't cover, inside \
+the agreed budget. For trips include travel, stay, food and activities, and name a real \
+destination and length (e.g. "4 days in Kraków").
+- suggest_idea: put an idea from the search results on the feed. Pass the sender's name when \
+they asked for it; leave it out to suggest it yourself. Suggest at most 3 of your own at a time.
+- vote_on_suggestion: a sender's tick or cross on something on the feed.
+- web_search: check real current prices before adding trip ideas, and find real places.
+- attach_venues: pin real places from your search results to an idea. Never make up a venue.
 
-Costs you add are estimates; say so. You can't book anything."""
+Say which step the group is on and who it's waiting for. Costs you add are estimates; say so. \
+You can't book anything."""
 
 PERSON = {"type": "string", "description": "Name of the person, exactly as written in their [Name] tag"}
+AFTER = {"type": "string", "enum": list(AFTER_STATES),
+         "description": "How they want to feel when it's over"}
 
 TOOLS = [
-    {"name": "set_plan", "description": "Save or change what's being planned. Send only fields you know; others are kept.",
+    {"name": "set_plan", "description": "Save or change where and what is being planned. Send only fields you know; others are kept.",
      "input_schema": {"type": "object", "properties": {
          "kind": {"type": "string", "enum": list(KINDS)}, "title": {"type": "string"},
          "place": {"type": "string", "description": "Town or city; for trips, where people travel from"},
@@ -63,35 +70,38 @@ TOOLS = [
          "hemisphere": {"type": "string", "enum": list(HEMISPHERES)},
          "month": {"type": "integer", "minimum": 1, "maximum": 12},
          "currency": {"type": "string", "enum": list(CURRENCIES)}}}},
-    {"name": "set_preferences", "description": "Save one sender's preferences. budget_max is the most they can spend per person.",
+    {"name": "set_preferences", "description": "Save one sender's answers. budget_max is the most they can spend per person.",
      "input_schema": {"type": "object", "properties": {
-         "person": PERSON, "vibe": {"type": "string", "enum": list(VIBES)},
+         "person": PERSON, "after_state": AFTER,
          "place": {"type": "string", "enum": list(PLACE_PREFS)}, "budget_max": {"type": "number", "minimum": 1}},
-         "required": ["person", "vibe", "place"]}},
+         "required": ["person", "after_state", "place"]}},
     {"name": "agree_plan", "description": "Record a sender's tick (agrees) or cross (doesn't agree) on the current plan details. Only what they said themselves.",
      "input_schema": {"type": "object", "properties": {"person": PERSON, "agrees": {"type": "boolean"}}, "required": ["person"]}},
     {"name": "agree_budget", "description": "Record that a sender accepts the current group budget. Only when they said so themselves.",
      "input_schema": {"type": "object", "properties": {"person": PERSON}, "required": ["person"]}},
-    {"name": "add_friend", "description": "Save preferences for a friend who was mentioned but isn't using the app.",
+    {"name": "add_friend", "description": "Save answers for a friend who was mentioned but isn't using the app.",
      "input_schema": {"type": "object", "properties": {
-         "name": {"type": "string"}, "vibe": {"type": "string", "enum": list(VIBES)},
+         "name": {"type": "string"}, "after_state": AFTER,
          "place": {"type": "string", "enum": list(PLACE_PREFS)}, "budget_max": {"type": "number", "minimum": 1}},
-         "required": ["name", "vibe", "place"]}},
-    {"name": "add_idea", "description": "Add one concrete option with a realistic estimated cost per person in the plan's currency.",
+         "required": ["name", "after_state", "place"]}},
+    {"name": "add_idea", "description": "Add one concrete option to the search results, with a realistic estimated cost per person in the plan's currency.",
      "input_schema": {"type": "object", "properties": {
          "name": {"type": "string", "description": "Short and concrete, e.g. \"4 days in Kraków\""},
          "cost_per_person": {"type": "number", "minimum": 0},
-         "vibes": {"type": "array", "items": {"type": "string", "enum": list(VIBES)}},
+         "after_states": {"type": "array", "items": {"type": "string", "enum": list(AFTER_STATES)},
+                          "description": "How it leaves people feeling"},
          "outdoor": {"type": "boolean", "description": "Leave out if it's a mix"},
          "note": {"type": "string", "description": "One short line on why it fits"}},
-         "required": ["name", "cost_per_person", "vibes"]}},
-    {"name": "record_feedback", "description": "Record that a sender likes or rules out one of the listed ideas (exact name).",
-     "input_schema": {"type": "object", "properties": {"person": PERSON, "idea": {"type": "string"}, "liked": {"type": "boolean"}},
-                      "required": ["person", "idea", "liked"]}},
-    {"name": "get_suggestions", "description": "The ranked ideas with cost per person, the budget status, and what's blocking the vote.",
+         "required": ["name", "cost_per_person", "after_states"]}},
+    {"name": "get_suggestions", "description": "The ranked search results with reasons, the budget status, the feed with votes, the agreed plan in order, and what's blocking the next step.",
      "input_schema": {"type": "object", "properties": {}}},
-    {"name": "start_vote", "description": "Freeze the top ideas and open voting. Only works once everyone has agreed the budget.",
-     "input_schema": {"type": "object", "properties": {"person": PERSON}, "required": ["person"]}},
+    {"name": "suggest_idea", "description": "Put an idea from the search results (exact name) on the feed for the group to tick or cross.",
+     "input_schema": {"type": "object", "properties": {
+         "idea": {"type": "string"}, "person": {**PERSON, "description": "The sender suggesting it; leave out to suggest it yourself"}},
+         "required": ["idea"]}},
+    {"name": "vote_on_suggestion", "description": "Record a sender's tick (agrees) or cross on an idea that's on the feed (exact name).",
+     "input_schema": {"type": "object", "properties": {"person": PERSON, "idea": {"type": "string"}, "agrees": {"type": "boolean"}},
+                      "required": ["person", "idea", "agrees"]}},
     ATTACH_VENUES_TOOL,
     WEB_SEARCH_TOOL,
 ]
@@ -131,9 +141,9 @@ class GroupBot:
         self.plan.set_details(fields)  # the bot's change needs everyone to agree it
         return json.dumps({"saved": self.plan.details, "season": self.plan.context()["season"]})
 
-    def tool_set_preferences(self, person, vibe, place, budget_max=None):
+    def tool_set_preferences(self, person, after_state, place, budget_max=None):
         uid = self._sender(person)
-        self.plan.set_preferences(uid, vibe, place, budget_max)
+        self.plan.set_preferences(uid, None, place, budget_max, after_state)
         return json.dumps({"saved": True, "groupBudget": self.plan.budget()["limit"]})
 
     def tool_agree_plan(self, person, agrees=True):
@@ -145,27 +155,36 @@ class GroupBot:
         self.plan.agree_budget(uid)
         return f"Agreed to {money(self.plan.currency, self.plan.budget()['limit'])} per person."
 
-    def tool_add_friend(self, name, vibe, place, budget_max=None):
-        self.plan.add_guest(name, vibe, place, budget_max)
+    def tool_add_friend(self, name, after_state, place, budget_max=None):
+        self.plan.add_guest(name, None, place, budget_max, after_state)
         return f"Saved {name}."
 
-    def tool_add_idea(self, name, cost_per_person, vibes, outdoor=None, note=""):
-        idea = self.plan.add_idea(name, cost_per_person, vibes, outdoor, note, by_bot=True)
+    def tool_add_idea(self, name, cost_per_person, after_states, outdoor=None, note=""):
+        idea = self.plan.add_idea(name, cost_per_person, None, outdoor, note, by_bot=True, after=after_states)
         limit = self.plan.budget()["limit"]
         if limit is not None and idea["cost_pp"] > limit:
             return f"Added, but it's over the {money(self.plan.currency, limit)} budget so it stays hidden."
         return "Added."
 
-    def tool_record_feedback(self, person, idea, liked):
-        self.plan.set_feedback(self._sender(person), idea, 1 if liked else -1)
-        return "Noted."
-
     def tool_get_suggestions(self):
         return json.dumps(self.plan.brief())
 
-    def tool_start_vote(self, person):
-        self.plan.start_vote(self._sender(person))
-        return "Voting is open in the app."
+    def tool_suggest_idea(self, idea, person=None):
+        if person:
+            self.plan.suggest_to_feed(self._sender(person), idea)
+        else:
+            self.plan.suggest_to_feed(None, idea, by_bot=True)
+        return "It's on the feed for everyone to tick or cross."
+
+    def tool_vote_on_suggestion(self, person, idea, agrees):
+        uid = self._sender(person)
+        item = next((i for i in self.plan.feed if i["name"] == idea), None)
+        if item is None:
+            raise ToolError(f"{idea!r} isn't on the feed. Use suggest_idea first.")
+        self.plan.feed_vote(uid, item["id"], bool(agrees))
+        state = self.plan.feed_state(item)
+        return json.dumps({"agree": len(state["yes"]), "against": len(state["no"]), "majorityNeeded": self.plan.majority(),
+                           "inThePlan": item["approved_seq"] is not None})
 
     def tool_attach_venues(self, idea, venues):
         self.plan.attach_venues(idea, venues)

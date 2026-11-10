@@ -10,7 +10,12 @@ The rules, which the server enforces:
     it are hidden.
   - Each person agrees the budget themselves. An agreement is for an exact
     amount, so if the budget changes everyone has to agree again.
-  - The vote opens only once everyone has agreed. People rate each finalist
+  - The kind of activity is worked out backwards: each person says how they
+    want to feel when it's over (physically spent, mentally sharp, unplugged...)
+    and the search puts activities that leave the group feeling that way first.
+  - Anyone suggests an idea to the feed and everyone ticks or crosses it. An
+    idea a majority agree to goes into the plan, in the order it was approved.
+  - (Older flow, still supported:) The vote opens only once everyone has agreed. People rate each finalist
     from 0 ("No way") to 4 ("Love it"). Any "No way" rules an option out,
     and the winner is the option whose least-happy person is happiest.
   - It's decided once everyone taps "I'm in".
@@ -37,6 +42,40 @@ KINDS = {
 CURRENCIES = {"£": "£ Pound", "€": "€ Euro", "$": "$ Dollar", "₹": "₹ Rupee"}
 COST_GUIDE = {"£": (15, 40, 90), "€": (18, 45, 100), "$": (20, 50, 110), "₹": (800, 2500, 6000)}
 FACES = (("😣", "No way"), ("😕", "Meh"), ("🙂", "OK"), ("😀", "Good"), ("😍", "Love it"))
+# How people want to feel when it's over: label, and how it reads in a reason.
+AFTER_STATES = {
+    "spent": ("Physically spent", "physically spent, ready to sleep deeply"),
+    "sharp": ("Mentally sharp", "mentally sharp, like you solved something"),
+    "unplugged": ("Unplugged", "unplugged, with your brain rested"),
+    "connected": ("Closer to each other", "closer to each other"),
+    "buzzing": ("Buzzing", "buzzing from a big one"),
+}
+AFTER_TO_VIBE = {"spent": "adventurous", "sharp": "creative", "unplugged": "chill", "connected": "fancy", "buzzing": "party"}
+VIBE_TO_AFTER = {v: k for k, v in AFTER_TO_VIBE.items()}
+# Catalog ideas whose after-feeling isn't just what their vibes suggest.
+AFTER_OVERRIDES = {
+    "Escape room challenge": ("sharp", "connected"), "Karaoke night in a private booth": ("buzzing", "connected"),
+    "Comedy club show": ("unplugged", "buzzing"), "Live concert or gig": ("buzzing",),
+    "Museum or gallery day + cafe": ("sharp", "unplugged"), "Pottery or painting class": ("sharp", "unplugged"),
+    "Cooking class together": ("sharp", "connected"), "Bowling and arcade night": ("buzzing", "connected"),
+    "Go-kart racing": ("buzzing", "spent"), "Trampoline park": ("spent", "buzzing"),
+    "Indoor rock climbing": ("spent", "sharp"), "Spa day": ("unplugged",),
+    "Food market crawl": ("unplugged", "connected"), "Backyard barbecue": ("connected", "unplugged"),
+    "Movie marathon sleepover": ("unplugged",), "Board game and pizza night": ("sharp", "connected"),
+    "Murder mystery dinner at home": ("sharp", "connected"), "Picnic in the park": ("unplugged", "connected"),
+    "Stargazing trip": ("unplugged",), "Horse riding trail": ("spent", "unplugged"),
+    "Scavenger hunt around town": ("sharp", "spent"), "Surf or paddleboard lesson": ("spent",),
+    "Mountain hike with a summit picnic": ("spent", "unplugged"), "Ski or snowboard day": ("spent",),
+    "Kayaking on the lake": ("spent", "unplugged"), "Lakeside camping trip": ("unplugged", "connected"),
+    "Ice skating and hot chocolate": ("spent", "connected"), "Rooftop dinner with a view": ("connected",),
+    "Chef's tasting menu": ("connected",), "Tapas and sharing plates": ("connected",),
+    "Korean barbecue": ("connected", "buzzing"), "Sushi or omakase": ("connected",),
+    "Pizza and wine bar": ("connected", "unplugged"), "Curry house feast": ("connected",),
+    "Potluck dinner at someone's home": ("connected", "unplugged"), "Street food night": ("connected", "unplugged"),
+    "Pub with a beer garden": ("unplugged", "connected"), "Cocktail bar crawl": ("buzzing",),
+    "Bottomless brunch": ("buzzing", "connected"),
+}
+MAX_FEED = 40
 FINALISTS = 6
 MAX_CUSTOM_IDEAS = 60
 MAX_GUESTS = 30
@@ -92,6 +131,12 @@ EXTRA_IDEAS = [
     _extra("Street food night", ("adventurous", "chill"), URBAN, True, 1, 15, "street food market", ("dinner",)),
 ]
 
+def after_tags(idea):
+    """How an idea leaves you feeling: its own tags, else what its vibes suggest."""
+    return tuple(idea.get("after") or AFTER_OVERRIDES.get(idea["name"])
+                 or dict.fromkeys(VIBE_TO_AFTER[v] for v in idea["vibes"] if v in VIBE_TO_AFTER))
+
+
 CATALOG = [
     {**i, "kinds": FUN_FOOD if i["name"] in FOOD else FUN, "search": SEARCH.get(i["name"])} for i in BASE_IDEAS
 ] + EXTRA_IDEAS
@@ -112,13 +157,15 @@ def slug(text):
 # --- the ranking algorithm (mirrors hosted/group-planner.html) ---------------
 
 def summarize_group(people):
-    vibes, places = {}, {}
+    vibes, places, after = {}, {}, {}
     for p in people:
         if p.get("vibe"):
             vibes[p["vibe"]] = vibes.get(p["vibe"], 0) + 1
         if p.get("place"):
             places[p["place"]] = places.get(p["place"], 0) + 1
-    return {"vibes": vibes, "places": places, "size": len(people)}
+        if p.get("after") in AFTER_STATES:
+            after[p["after"]] = after.get(p["after"], 0) + 1
+    return {"vibes": vibes, "places": places, "after": after, "size": len(people)}
 
 
 def learn_weights(feedback, lookup):
@@ -146,11 +193,21 @@ def score_idea(idea, ctx, group, w):
         if idea.get("winter_only") and season != "winter":
             return None
     score, reasons = 0, []
+    # Work backwards from how people want to feel afterwards: this weighs more
+    # than anything else, so it decides the kind of activity.
+    wanted = group.get("after") or {}
+    tags = after_tags(idea) if wanted else ()
+    after_votes = sum(wanted.get(a, 0) for a in tags)
+    if after_votes > 0:
+        score += 4 * after_votes
+        top = max(tags, key=lambda a: wanted.get(a, 0))
+        reasons.append(f"leaves you {AFTER_STATES[top][1]}")
     vibe_votes = sum(group["vibes"].get(v, 0) for v in idea["vibes"])
     if vibe_votes > 0:
         score += 3 * vibe_votes
         top = max(idea["vibes"], key=lambda v: group["vibes"].get(v, 0))
-        reasons.append(f"matches the group's {top} vibe")
+        if not after_votes:
+            reasons.append(f"matches the group's {top} vibe")
     if idea["outdoor"] is not None:
         out, ins = group["places"].get("outdoor", 0), group["places"].get("indoor", 0)
         score += out - ins if idea["outdoor"] else ins - out
@@ -256,6 +313,8 @@ class GroupPlan:
         self.ratings = {}      # uid -> {"round": n, "ratings": {idea name: 0-4}}
         self.ideas = {}        # slug -> custom idea
         self.venues = {}       # idea name -> [{name, url, note}]
+        self.feed = []         # suggestions: {id, name, by, votes {uid: bool}, approved_seq}
+        self.seq = 0           # counter that orders suggestions and approvals
         self.host = None
         self.tokens = {}       # uid -> random id shown to others (account ids stay private)
 
@@ -396,6 +455,96 @@ class GroupPlan:
             out.append("there need to be at least 2 ideas")
         return out
 
+    # --- the feed: suggestions the group ticks or crosses ---
+
+    def group_after(self):
+        """How many people want each after-feeling, and the most wanted one."""
+        counts = summarize_group(self.everyone())["after"]
+        top = max(counts, key=lambda a: (counts[a], -list(AFTER_STATES).index(a))) if counts else None
+        return counts, top
+
+    def feed_blockers(self):
+        """Why suggestions can't be made or voted on yet: location, then amount."""
+        d, b, parts = self.details_agreement(), self.budget(), self.participants()
+        if not (self.kind() and self.details.get("place")):
+            return ["set where and what you're planning first"]
+        if not d["all_agreed"]:
+            return ["everyone needs to agree the location and plan first"]
+        if len(parts) < len(self.members()):
+            waiting = [u for u, p in self.members() if p.get("vibe") not in VIBES]
+            return [f"waiting for {self.names(waiting)} to answer how they want to feel and their budget"]
+        if not b["all_agreed"]:
+            return ["everyone needs to agree the budget first"]
+        return []
+
+    def majority(self):
+        return len(self.members()) // 2 + 1
+
+    def feed_state(self, item):
+        members = dict(self.members())
+        idea = next((c for c in self.candidates() if c["name"] == item["name"]), None)
+        limit = self.budget()["limit"]
+        yes = [u for u, v in item["votes"].items() if v and u in members]
+        no = [u for u, v in item["votes"].items() if not v and u in members]
+        over = idea is not None and limit is not None and idea["cost_pp"] > limit
+        ok = idea is not None and not over and not self.feed_blockers() and len(yes) >= self.majority()
+        return {"idea": idea, "yes": yes, "no": no, "over_budget": over, "ok": ok}
+
+    def refresh_feed(self):
+        """Stamp ideas the moment a majority agrees, and unstamp any that lose it."""
+        for item in self.feed:
+            ok = self.feed_state(item)["ok"]
+            if ok and item["approved_seq"] is None:
+                self.seq += 1
+                item["approved_seq"] = self.seq
+            elif not ok:
+                item["approved_seq"] = None
+
+    def agreed_plan(self):
+        """Ideas a majority agreed to, in the order they were approved."""
+        return sorted((i for i in self.feed if i["approved_seq"] is not None), key=lambda i: i["approved_seq"])
+
+    def suggest_to_feed(self, uid, name, by_bot=False):
+        if not by_bot:
+            self._participant(uid)
+        blockers = self.feed_blockers()
+        if blockers:
+            raise PlanError("Can't suggest yet: " + blockers[0] + ".")
+        idea = next((c for c in self.candidates() if c["name"] == name), None)
+        if idea is None:
+            raise PlanError("That idea isn't on the list.")
+        limit = self.budget()["limit"]
+        if limit is not None and idea["cost_pp"] > limit:
+            raise PlanError(f"That's over the {money(self.currency, limit)} budget everyone agreed.")
+        if any(i["name"] == name for i in self.feed):
+            raise PlanError("That's already on the feed.")
+        if len(self.feed) >= MAX_FEED:
+            raise PlanError("The feed is full. Decide on what's there first.")
+        self.seq += 1
+        item = {"id": self.seq, "name": name, "by": None if by_bot else uid, "votes": {}, "approved_seq": None}
+        if not by_bot:
+            item["votes"][uid] = True      # suggesting something counts as agreeing to it
+        self.feed.append(item)
+        self.refresh_feed()
+        return item
+
+    def feed_vote(self, uid, feed_id, agree):
+        p = self.people.get(uid)
+        if not p or not p.get("active", True):
+            raise PlanError("Join the plan first.")
+        blockers = self.feed_blockers()
+        if blockers:
+            raise PlanError("Can't vote yet: " + blockers[0] + ".")
+        item = next((i for i in self.feed if i["id"] == feed_id), None)
+        if item is None:
+            raise PlanError("That suggestion isn't on the feed.")
+        if agree is None:
+            item["votes"].pop(uid, None)
+        else:
+            item["votes"][uid] = bool(agree)
+        self.refresh_feed()
+        return item
+
     def names(self, uids):
         return ", ".join(self.people[u]["name"] for u in uids if u in self.people)
 
@@ -412,6 +561,7 @@ class GroupPlan:
             self.people[uid] = {"name": name, "active": True}
             self.tokens[uid] = secrets.token_hex(8)
             self.host = self.host or uid
+            self.refresh_feed()
 
     def token(self, uid):
         return self.tokens.get(uid)
@@ -461,6 +611,7 @@ class GroupPlan:
                 p.pop("budget_ok", None)
         if uid in self.people and self.people[uid].get("active", True):
             self.people[uid]["plan_vote"] = {"version": self.details_version, "agree": True}
+        self.refresh_feed()
 
     def vote_plan(self, uid, agree, version=None):
         """A tick (agree) or cross (don't agree) on the current plan details."""
@@ -472,15 +623,22 @@ class GroupPlan:
         if version is not None and version != self.details_version:
             raise PlanError("The plan details just changed. Check them and answer again.")
         p["plan_vote"] = {"version": self.details_version, "agree": bool(agree)}
+        self.refresh_feed()
 
     def agree_details(self, uid, version=None):
         self.vote_plan(uid, True, version)
 
-    def set_preferences(self, uid, vibe, place, budget_max):
+    def set_preferences(self, uid, vibe, place, budget_max, after=None):
+        """Save someone's answers. `after` is how they want to feel when it's
+        over; it stands in for a vibe when none is given."""
         if uid not in self.people:
             raise PlanError("Join the plan first.")
+        if after is not None and after not in AFTER_STATES:
+            raise PlanError("Pick how you want to feel afterwards.")
+        if vibe is None and after:
+            vibe = AFTER_TO_VIBE[after]
         if vibe not in VIBES or place not in PLACE_PREFS:
-            raise PlanError("Pick a vibe and indoors or outdoors.")
+            raise PlanError("Pick how you want to feel afterwards, and indoors or outdoors.")
         if budget_max is not None:
             if isinstance(budget_max, bool) or not isinstance(budget_max, (int, float)) or not budget_max > 0:
                 raise PlanError("The budget needs to be a number above zero.")
@@ -488,6 +646,9 @@ class GroupPlan:
             if budget_max < 1:
                 raise PlanError("The budget needs to be at least 1.")
         self.people[uid].update(vibe=vibe, place=place, budget_max=budget_max, active=True)
+        if after:
+            self.people[uid]["after"] = after
+        self.refresh_feed()
 
     def agree_budget(self, uid, amount=None):
         p, b = self._participant(uid), self.budget()
@@ -500,6 +661,7 @@ class GroupPlan:
         if amount is not None and amount != b["limit"]:
             raise PlanError(f"The group budget just changed to {money(self.currency, b['limit'])}. Check it and agree again.")
         p["budget_ok"] = b["limit"]
+        self.refresh_feed()
 
     def set_feedback(self, uid, idea, signal):
         self._participant(uid)
@@ -511,11 +673,12 @@ class GroupPlan:
         else:
             mine.pop(idea, None)
 
-    def add_idea(self, name, cost_pp, vibes, outdoor=None, note="", by_bot=False, added_by=None):
+    def add_idea(self, name, cost_pp, vibes, outdoor=None, note="", by_bot=False, added_by=None, after=None):
         name = " ".join(str(name or "").split())[:70]
-        vibes = [v for v in (vibes or []) if v in VIBES]
+        after = [a for a in (after or []) if a in AFTER_STATES]
+        vibes = [v for v in (vibes or []) if v in VIBES] or list(dict.fromkeys(AFTER_TO_VIBE[a] for a in after))
         if not name or not vibes:
-            raise PlanError("An idea needs a name and at least one vibe.")
+            raise PlanError("An idea needs a name and how it leaves you feeling.")
         if isinstance(cost_pp, bool) or not isinstance(cost_pp, (int, float)) or cost_pp < 0:
             raise PlanError("The cost per person needs to be a number.")
         key = slug(name)
@@ -524,17 +687,20 @@ class GroupPlan:
         self.ideas[key] = {"name": name, "cost_pp": round(cost_pp), "vibes": vibes,
                            "outdoor": outdoor if isinstance(outdoor, bool) else None,
                            "note": " ".join(str(note or "").split())[:140], "by_bot": by_bot, "added_by": added_by,
-                           "search": name}
+                           "search": name, **({"after": after} if after else {})}
         return self.ideas[key]
 
-    def add_guest(self, name, vibe, place, budget_max=None):
+    def add_guest(self, name, vibe, place, budget_max=None, after=None):
         name = " ".join(str(name or "").split())[:40]
+        after = after if after in AFTER_STATES else None
+        vibe = vibe or (AFTER_TO_VIBE[after] if after else None)
         if not name or vibe not in VIBES or place not in PLACE_PREFS:
-            raise PlanError("A friend needs a name, a vibe and indoors or outdoors.")
+            raise PlanError("A friend needs a name, how they want to feel afterwards, and indoors or outdoors.")
         if slug(name) not in self.guests and len(self.guests) >= MAX_GUESTS:
             raise PlanError("Too many friends added by chat.")
         b = round(budget_max) if isinstance(budget_max, (int, float)) and not isinstance(budget_max, bool) and budget_max >= 1 else None
-        self.guests[slug(name)] = {"name": name, "vibe": vibe, "place": place, "budget_max": b}
+        self.guests[slug(name)] = {"name": name, "vibe": vibe, "place": place, "budget_max": b, **({"after": after} if after else {})}
+        self.refresh_feed()
 
     def set_active(self, actor, target_token, active):
         target = self.uid_for(target_token)
@@ -543,6 +709,7 @@ class GroupPlan:
         if actor != target and actor != self.host:
             raise PlanError("Only the host can change who's taking part.")
         self.people[target]["active"] = bool(active)
+        self.refresh_feed()
 
     def start_vote(self, uid):
         self._participant(uid)
@@ -616,10 +783,32 @@ class GroupPlan:
         mine = self.feedback.get(uid, {})
         estimates = {c["name"]: c.get("estimate", False) for c in self.candidates()}
 
+        on_feed = {i["name"] for i in self.feed}
+        after_of = {c["name"]: after_tags(c) for c in self.candidates()}
+
         def idea_view(i):
             return {"name": i["name"], "cost_pp": i["cost_pp"], "estimate": estimates.get(i["name"], False),
                     "reasons": i.get("reasons", []), "note": i.get("note", ""), "mine": mine.get(i["name"], 0),
+                    "after": [AFTER_STATES[a][0] for a in after_of.get(i["name"], ())], "on_feed": i["name"] in on_feed,
                     "map_url": self.map_url(i["name"]), "venues": self.venues.get(i["name"], [])}
+
+        def feed_view(item):
+            st = self.feed_state(item)
+            idea = st["idea"] or {}
+            by = self.people.get(item["by"], {}).get("name") if item["by"] else "Planner bot"
+            mine_vote = item["votes"].get(uid)
+            return {"id": item["id"], "name": item["name"], "by": by or "Someone", "cost_pp": idea.get("cost_pp"),
+                    "estimate": estimates.get(item["name"], False), "note": idea.get("note", ""),
+                    "after": [AFTER_STATES[a][0] for a in after_of.get(item["name"], ())],
+                    "yes": len(st["yes"]), "no": len(st["no"]), "yes_names": [self.people[u]["name"] for u in st["yes"]],
+                    "no_names": [self.people[u]["name"] for u in st["no"]],
+                    "you": None if uid not in dict(self.members()) or mine_vote is None else ("yes" if mine_vote else "no"),
+                    "approved": item["approved_seq"] is not None, "order": item["approved_seq"],
+                    "over_budget": st["over_budget"], "gone": st["idea"] is None,
+                    "map_url": self.map_url(item["name"]), "venues": self.venues.get(item["name"], [])}
+
+        after_counts, after_top = self.group_after()
+        feed_blockers = self.feed_blockers()
 
         people = []
         for pid, p in self.people.items():
@@ -628,6 +817,7 @@ class GroupPlan:
                 "name": p["name"], "is_you": pid == uid, "is_host": pid == self.host, "id": self.token(pid),
                 "joined": p.get("vibe") in VIBES, "active": p.get("active", True), "guest": False,
                 "vibe": p.get("vibe"), "place": p.get("place"), "budget_max": bm,
+                "after": p.get("after"), "after_label": AFTER_STATES[p["after"]][0] if p.get("after") in AFTER_STATES else None,
                 "agreed": pid in b["agreed"], "sets_budget": bm is not None and bm == b["limit"],
                 "agreed_details": pid in da["agreed"],
                 "plan_vote": "yes" if pid in da["agreed"] else "no" if pid in da["disagreed"] else None,
@@ -638,6 +828,7 @@ class GroupPlan:
             bm = self.budget_of(g)
             people.append({"name": g["name"], "is_you": False, "is_host": False, "id": None, "joined": True,
                            "active": True, "guest": True, "vibe": g["vibe"], "place": g["place"], "budget_max": bm,
+                           "after": g.get("after"), "after_label": AFTER_STATES[g["after"]][0] if g.get("after") in AFTER_STATES else None,
                            "agreed": False, "sets_budget": bm is not None and bm == b["limit"], "agreed_details": False,
                            "plan_vote": None,
                            "rated": False, "signoff": None})
@@ -653,7 +844,7 @@ class GroupPlan:
                     "agreed": uid in b["agreed"], "rated": uid in rated,
                     "my_ratings": self.ratings.get(uid, {}).get("ratings", {}) if uid in rated else {},
                     "vibe": me.get("vibe"), "place": me.get("place"), "budget_max": self.budget_of(me),
-                    "active": me.get("active", True)} if me else None,
+                    "after": me.get("after"), "active": me.get("active", True)} if me else None,
             "people": people,
             "plan_agreement": {"version": da["version"], "all_agreed": da["all_agreed"], "agreed": len(da["agreed"]),
                                "disagreed": len(da["disagreed"]), "total": da["total"], "taking_part": da["total"],
@@ -662,6 +853,12 @@ class GroupPlan:
             "budget": {"limit": b["limit"], "all_agreed": b["all_agreed"], "agreed": len(b["agreed"]),
                        "taking_part": len(parts), "missing": len(b["missing"])},
             "ideas": [idea_view(i) for i in ideas], "over_budget": over, "needs_area": needs_area,
+            "after": {"options": [{"key": k, "label": v[0], "feels": v[1]} for k, v in AFTER_STATES.items()],
+                      "counts": after_counts, "top": after_top, "top_label": AFTER_STATES[after_top][0] if after_top else None,
+                      "answered": sum(after_counts.values()), "total": len(self.members())},
+            "feed": [feed_view(i) for i in reversed(self.feed)], "feed_blockers": feed_blockers,
+            "majority": self.majority(), "member_count": len(self.members()),
+            "agreed_plan": [feed_view(i) for i in self.agreed_plan()],
             "vote_blockers": self.vote_blockers(),
             "finalists": [idea_view(f) for f in self.finalists()] if self.current_phase() != "planning" else [],
             "rated": len(rated),
@@ -681,13 +878,18 @@ class GroupPlan:
         ideas = self.ranking()[0]
         return {
             "plan": {**self.details, "currency": self.currency, "phase": self.current_phase()},
-            "people": [{"name": p["name"], "vibe": p.get("vibe"), "place": p.get("place"),
+            "people": [{"name": p["name"], "wantsToFeelAfter": p.get("after"), "place": p.get("place"),
                         "maxPerPerson": self.budget_of(p), "agreedBudget": uid in b["agreed"]}
                        for uid, p in self.participants()]
                       + [{"name": g["name"], "vibe": g["vibe"], "place": g["place"],
                           "maxPerPerson": self.budget_of(g), "notUsingApp": True} for g in self.guests.values()],
             "planDetailsAgreedByEveryone": self.details_agreement()["all_agreed"],
             "groupBudgetPerPerson": b["limit"], "budgetAgreedByEveryone": b["all_agreed"],
-            "ideas": [{"name": i["name"], "costPerPerson": i["cost_pp"]} for i in ideas],
-            "voteBlockers": self.vote_blockers(),
+            "groupMostlyWantsToFeel": self.group_after()[1],
+            "ideas": [{"name": i["name"], "costPerPerson": i["cost_pp"], "reasons": i["reasons"]} for i in ideas],
+            "feedBlockedBecause": self.feed_blockers(),
+            "feed": [{"name": i["name"], "agree": len(self.feed_state(i)["yes"]), "against": len(self.feed_state(i)["no"]),
+                      "inThePlan": i["approved_seq"] is not None} for i in self.feed],
+            "majorityNeeded": self.majority(),
+            "agreedPlanInOrder": [i["name"] for i in self.agreed_plan()],
         }

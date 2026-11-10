@@ -74,27 +74,24 @@ export ANTHROPIC_API_KEY=...
 python3 -m birthday_planner.web        # prints a link friends on your Wi-Fi can open
 ```
 
-The same group planner as the hosted page, run on your own server:
+A group decides where to go and what to do, in a fixed order:
 
-- **Any kind of plan:** a birthday, a dinner, a day or night out, a trip, or
-  anything else. Local plans use the built-in idea catalog; for trips and
-  anything else the planner bot adds concrete options with estimated costs
-  (it can web-search current prices and pin real venues), and anyone can add
-  their own.
-- **The plan comes first:** saving the plan pops up a summary of everything
-  saved (type of event, name, location, month...) with everyone in the plan
-  beside it and a ✓ or ✗ from each. The tally always matches the number of
-  people in the plan, and it's approved once everyone ticks ✓. Whoever saves
-  the details agrees to them; any change means everyone answers again,
-  budget included.
-- **A budget everyone agrees:** each person gives the most they can spend per
-  person; the group budget is the lowest. Everyone agrees that exact amount
-  before voting opens, and has to agree again if it changes.
-- **Voting built for agreement:** everyone rates the finalists from "No way"
-  to "Love it". Any "No way" rules an option out, and the winner is the one
-  the least-happy person likes most.
-- **Sign-off:** it's decided once everyone taps "I'm in". The host (whoever
-  started the plan) can mark someone who's gone quiet as not taking part.
+1. **Location first.** Saving the plan pops up a summary of everything saved
+   (type of event, name, location, month...) with everyone in the plan beside
+   it and a ✓ or ✗ from each. It's approved once everyone ticks ✓; any change
+   means everyone answers again.
+2. **The amount.** Each person gives the most they can spend per person; the
+   group budget is the lowest, and everyone agrees that exact amount.
+3. **The kind of activity, worked out backwards.** Nobody is asked "what do
+   you want to do?". Each person answers how they want to *feel* when it's
+   over: physically spent, mentally sharp, unplugged, closer to each other, or
+   buzzing. The search ranks ideas that leave the group feeling that way
+   first (it outweighs every other factor), and each result says why.
+4. **The feed.** Anyone suggests a search result or their own idea; it lands
+   on a shared feed and in the group chat, and everyone ticks or crosses it.
+5. **Majority.** An idea more than half the group ticks goes into the plan,
+   listed in the order it was approved. Changing a vote, someone leaving, or
+   a lower budget can take it back out.
 
 The rules live in `birthday_planner/group.py` and are enforced by the server,
 so nobody can open the vote early, agree a budget for someone else or rate

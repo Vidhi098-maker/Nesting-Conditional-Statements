@@ -87,6 +87,13 @@ class Room:
     def post(self, sender, text, uid=None):
         self.chat.append({"id": len(self.chat), "sender": sender, "uid": self.plan.token(uid) if uid else None, "text": text})
 
+    def announce_approved(self, before):
+        """Tell the chat about ideas that just reached a majority."""
+        for item in self.plan.agreed_plan():
+            if item["id"] not in before:
+                yes = len(self.plan.feed_state(item)["yes"])
+                self.post("App", f"✓ {item['name']} is in the plan ({yes} of {len(self.plan.members())} agreed).")
+
     def snapshot(self, since, uid=None):
         view = self.plan.view(uid) if uid in self.members else {}
         return {
@@ -161,6 +168,7 @@ class App:
                 room.pending.clear()
                 brief = json.dumps(room.plan.brief())
                 round_before = room.plan.round
+                in_plan_before = {i["id"] for i in room.plan.agreed_plan()}
             senders = {name: uid for uid, name, _ in batch}
             content = f"(Current plan, from the app: {brief})\n" + "\n".join(f"[{n}]: {t}" for _, n, t in batch)
             turn_start = len(room.history)
@@ -169,6 +177,7 @@ class App:
             with room.lock:
                 if reply:
                     room.post("Bot", reply)
+                room.announce_approved(in_plan_before)
                 if room.plan.round != round_before:
                     room.post("App", "Voting is open! Rate every option.")
 
@@ -204,20 +213,33 @@ class App:
             if uid not in room.members:
                 raise PlanError("Join the room first.")
             plan = room.plan
+            in_plan_before = {i["id"] for i in plan.agreed_plan()}
             if action == "details":
                 fields = {k: data[k] for k in ("kind", "title", "place", "setting", "features", "hemisphere", "month", "currency") if k in data}
                 plan.set_details(fields, uid)
             elif action == "agree-details":
                 plan.vote_plan(uid, data.get("agree", True) is not False, data.get("version"))
             elif action == "preferences":
-                plan.set_preferences(uid, data.get("vibe"), data.get("place"), data.get("budget_max"))
+                plan.set_preferences(uid, data.get("vibe"), data.get("place"), data.get("budget_max"), data.get("after"))
             elif action == "agree":
                 plan.agree_budget(uid, data.get("amount"))
             elif action == "feedback":
                 plan.set_feedback(uid, data.get("idea"), data.get("signal") or 0)
             elif action == "idea":
-                plan.add_idea(data.get("idea"), data.get("cost_pp"), data.get("vibes"), data.get("outdoor"),
-                              data.get("note", ""), by_bot=False, added_by=uid)
+                idea = plan.add_idea(data.get("idea"), data.get("cost_pp"), data.get("vibes"), data.get("outdoor"),
+                                     data.get("note", ""), by_bot=False, added_by=uid, after=data.get("after"))
+                limit = plan.budget()["limit"]
+                # Adding your own idea is suggesting it, once the feed is open and it fits the budget.
+                if (not plan.feed_blockers() and not (limit is not None and idea["cost_pp"] > limit)
+                        and all(i["name"] != idea["name"] for i in plan.feed)):
+                    plan.suggest_to_feed(uid, idea["name"])
+                    room.post("App", f"{room.members[uid]} suggested {idea['name']}. Tick or cross it on the feed.")
+            elif action == "suggest":
+                item = plan.suggest_to_feed(uid, data.get("idea"))
+                room.post("App", f"{room.members[uid]} suggested {item['name']}. Tick or cross it on the feed.")
+            elif action == "feed-vote":
+                agree = data.get("agree")
+                plan.feed_vote(uid, data.get("id"), agree if isinstance(agree, bool) else None)
             elif action == "active":
                 plan.set_active(uid, data.get("person"), bool(data.get("active")))
             elif action == "start-vote":
@@ -235,6 +257,7 @@ class App:
                     room.post("App", f"Decided: {plan.result()[1]['name']}. Everyone's in! 🎉")
             else:
                 raise UnknownAction(action)
+            room.announce_approved(in_plan_before)
 
 
 def clean_name(value):
